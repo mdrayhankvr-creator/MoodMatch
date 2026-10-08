@@ -41,6 +41,7 @@ yarn-error.log*
 
 # environment files, including .env.local
 .env*
+!.env.example
 
 # vercel
 .vercel
