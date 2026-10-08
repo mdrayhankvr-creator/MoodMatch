@@ -22,7 +22,16 @@
 
 # misc
 .DS_Store
+
+# secrets
 *.pem
+*.key
+*.p12
+*.pfx
+*.secret
+.secrets/
+credentials*.json
+service-account*.json
 
 # debug
 npm-debug.log*
@@ -30,7 +39,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# environment files, including .env.local
 .env*
 
 # vercel
