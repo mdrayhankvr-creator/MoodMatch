@@ -9,6 +9,50 @@ import { parse } from "dotenv";
 
 class ConfigurationError extends Error {}
 
+const NETWORK_ERROR_CODES = new Set([
+  "EACCES",
+  "EPERM",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+function isNetworkError(error) {
+  const pending = [error];
+  const seen = new Set();
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+
+    if (!current || typeof current !== "object" || seen.has(current)) {
+      continue;
+    }
+
+    seen.add(current);
+
+    if (
+      current instanceof DataAPITimeoutError ||
+      current instanceof TypeError ||
+      NETWORK_ERROR_CODES.has(current.code)
+    ) {
+      return true;
+    }
+
+    pending.push(current.cause);
+
+    if (current instanceof AggregateError) {
+      pending.push(...current.errors);
+    }
+  }
+
+  return false;
+}
+
 function requiredSetting(settings, name) {
   const value = settings[name]?.trim();
 
@@ -79,7 +123,7 @@ function failureMessage(error) {
     return "Astra DB rejected the read-only connection check.";
   }
 
-  if (error instanceof DataAPITimeoutError || error instanceof TypeError) {
+  if (isNetworkError(error)) {
     return "Could not reach Astra DB. Check network access and database status.";
   }
 
