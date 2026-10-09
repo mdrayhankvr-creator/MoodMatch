@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DataAPIVector } from "@datastax/astra-db-ts";
+import { createHash } from "node:crypto";
+import { makeCacheIdentity } from "../lib/embedding-cache.mjs";
+import { DEFAULT_CHUNK_CONFIG } from "../lib/chunking.mjs";
+import { buildMovieEmbeddingInput } from "../lib/embedding-runtime.mjs";
+import { LOCAL_DIMENSIONS, LOCAL_MODEL_ID, LOCAL_MODEL_REVISION } from "../lib/embedding-provider.mjs";
 import { validateAstraSettings } from "../lib/astra-runtime.mjs";
 import { LOCAL_COLLECTION, initializeMovieCollection, makeMovieVectorDocument, upsertMovieVector,
   verifyMovieVector, ingestMovieBatch, searchMovieVectors } from "../lib/movie-vector-store.mjs";
@@ -9,8 +14,19 @@ const movie = Object.freeze({ id: "movie_0123456789abcdef0123", title: "Real tit
   genre: "Drama", plot: "A complete source plot about a real film.",
   source_url: "https://en.wikipedia.org/wiki/Example_film" });
 const vector = Object.freeze([1, ...new Array(383).fill(0)]);
-const embedding = Object.freeze({ id: movie.id, vector, sourceHash: "a".repeat(64), chunkCount: 2,
-  cacheStatus: "hit" });
+function embeddingFor(record) {
+  const provenance = makeCacheIdentity({ recordId: record.id,
+    normalizedText: buildMovieEmbeddingInput(record), providerId: "local",
+    modelId: LOCAL_MODEL_ID, modelRevision: LOCAL_MODEL_REVISION,
+    dimensions: LOCAL_DIMENSIONS, chunkConfig: DEFAULT_CHUNK_CONFIG });
+  const chunks = [{ index: 0, coreStart: 0, coreEnd: record.plot.length, spanStart: 0,
+    inputTokens: 20, weight: record.plot.length }];
+  const payload = { identity: provenance, chunkCount: chunks.length, chunks, vector };
+  return { id: record.id, vector, sourceHash: provenance.sourceHash,
+    chunkCount: chunks.length, chunks, provenance, cacheStatus: "hit",
+    cacheIntegrityHash: createHash("sha256").update(JSON.stringify(payload)).digest("hex") };
+}
+const embedding = embeddingFor(movie);
 
 function mockDb(options = {}) {
   const documents = new Map();
@@ -91,8 +107,9 @@ test("stable IDs upsert once, unchanged content skips, changed content replaces"
   assert.equal(await upsertMovieVector(collection, metadataOnly), "metadata-updated");
   assert.equal(calls.updates, 1);
   assert.equal(calls.replaces, 1);
-  const changed = makeMovieVectorDocument({ ...movie, plot: "A changed source plot about a real film." },
-    { ...embedding, sourceHash: "b".repeat(64) });
+  const changedMovie = { ...movie, plot: "A changed source plot about a real film." };
+  assert.throws(() => makeMovieVectorDocument(changedMovie, embedding), /incompatible with current content/);
+  const changed = makeMovieVectorDocument(changedMovie, embeddingFor(changedMovie));
   assert.equal(await upsertMovieVector(collection, changed), "updated");
   assert.equal(documents.size, 1);
   assert.equal(calls.replaces, 2);
@@ -114,7 +131,7 @@ test("batch reports per-record partial write failures and continues", async () =
   const second = { ...movie, id: "movie_abcdef0123456789abcd" };
   const { collection, calls, documents } = mockDb({ failId: second.id });
   const results = await ingestMovieBatch(collection, [movie, second], async (item) =>
-    ({ ...embedding, id: item.id }));
+    embeddingFor(item));
   assert.deepEqual(results.map((item) => item.status), ["inserted", "failed"]);
   assert.equal(calls.replaces, 2);
   assert.equal(documents.size, 1);

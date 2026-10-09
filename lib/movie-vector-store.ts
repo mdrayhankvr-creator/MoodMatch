@@ -20,6 +20,20 @@ export interface LocalMovieEmbedding {
   vector: number[];
   sourceHash: string;
   chunkCount: number;
+  chunks: Array<Record<string, number>>;
+  provenance: {
+    schemaVersion: number;
+    recordId: string;
+    providerId: string;
+    modelId: string;
+    modelRevision: string;
+    dimensions: number;
+    chunkConfig: { maxTokens: number; contentTokens: number; overlapTokens: number };
+    aggregationVersion: string;
+    sourceHash: string;
+    key: string;
+  };
+  cacheIntegrityHash: string;
 }
 
 export interface MovieVectorDocument {
