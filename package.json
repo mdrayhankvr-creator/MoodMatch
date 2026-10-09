@@ -19,7 +19,10 @@
     "test:offline": "node --test tests/*.test.mjs",
     "embeddings:local": "node scripts/test-local-embeddings.mjs",
     "embeddings:build:dry-run": "node scripts/build-local-embeddings.mjs --dry-run",
-    "embeddings:build:sample": "node scripts/build-local-embeddings.mjs --sample"
+    "embeddings:build:sample": "node scripts/build-local-embeddings.mjs --sample",
+    "db:ingest:dry-run": "node scripts/ingest-movies.mjs --limit 5",
+    "db:ingest:sample": "node scripts/ingest-movies.mjs --apply --limit 5",
+    "db:vector:test": "node scripts/test-vector-search.mjs"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",

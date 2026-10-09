@@ -143,6 +143,23 @@ The dry run tokenizes all 1,100 movies and reports estimated chunks and token co
 
 Cache files use stable record IDs and SHA-256 keys over normalized source text, provider, model, pinned revision, chunk settings, and aggregation version. Each file stores the normalized-source hash, 384-dimensional vector, chunk count, and chunk metadata. Entries are checked for matching identity, dimensions, finite values, unit norm, and integrity before reuse; invalid entries are rebuilt. Files are written through a temporary file and atomic rename, so an interrupted write does not become a valid cache hit. To rebuild after a source, model, or configuration change, rerun the sample command; the changed identity creates a new entry. To discard obsolete local entries, remove only the ignored `data/cache/embeddings/local/` directory after checking its path. Cache paths reserve separate provider namespaces; this command writes only to the local namespace. Generated vectors and model artifacts are not committed.
 
+### Controlled Astra DB ingestion (Milestone 6)
+
+The server-only local vector store uses collection `movies_local_384`, configured for **384 dimensions**, **cosine** similarity, and client-supplied vectors. It checks existing collection settings before any write and refuses incompatible dimensions, metric, or Astra-managed vectorization. OpenAI vectors belong in a separate future collection, `movies_openai_1536`; these commands never call OpenAI or write to that collection.
+
+```bash
+npm run db:ingest:dry-run
+npm run db:ingest:sample
+npm run db:vector:test
+npm run db:ingest:sample
+```
+
+On Windows use `npm.cmd run ...`. Dry-run is the default when running `scripts/ingest-movies.mjs` directly. It tokenizes and checks a deterministic sample of five real movies, including two long plots, and reports cache status, chunk counts, and planned IDs. It makes no database writes or inference calls and does not need Astra credentials. `--apply` is required to create the collection and upsert documents; `--limit` only accepts 2–5. The apply command loads `.env.local` locally, creates the collection only if missing, and uses cached local embeddings or generates missing local embeddings. It never processes the whole dataset.
+
+Each document uses the stable movie ID as `_id` and stores the full plot, source article URL, year, genre, `content_type=movie`, content SHA-256, provider, model revision, aggregation/chunk version, chunk count, and a 384-dimensional vector. An unchanged, valid remote document is skipped. Source URL or year corrections with the same embedding identity update metadata without rewriting the vector. Changed content or model versions cause an upsert at the same ID. Every successful upsert is read back with explicit `$vector` projection and checked for metadata, dimensions, finite values, and unique ID. Run apply a second time to confirm unchanged records are skipped. The similarity check searches with one stored sample vector and prints at most five IDs, titles, and scores; this small sample cannot establish recommendation quality.
+
+The sample's complete Wikipedia plots and metadata retain the attribution and **CC BY-SA 4.0** obligations described in [data/ATTRIBUTION.md](data/ATTRIBUTION.md). Database copies and any downstream display must preserve article links, contributor attribution, change notices, and ShareAlike terms where applicable. Review exceptional article notices before broader distribution. A future full-dataset ingestion needs explicit authorization, batching, resumability, budget and quota controls, and per-record licensing review; this CLI deliberately caps writes at five movie IDs.
+
 ### OpenAI option
 
 Set `EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY` in ignored `.env.local` for server-side OpenAI use. `OPENAI_EMBEDDING_MODEL` defaults to `text-embedding-3-small`; the service also accepts `text-embedding-3-large` with an explicit 1,536-dimension output. The existing OpenAI retry and validation logic remains in place. The separate OpenAI sample commands below explicitly select that provider; running the local command never selects it.
