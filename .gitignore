@@ -47,6 +47,7 @@ yarn-error.log*
 /data/raw/
 /data/cache/
 /data/cache/embeddings/
+/data/cache/ingestion/
 
 # vercel
 .vercel

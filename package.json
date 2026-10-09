@@ -16,13 +16,17 @@
     "data:all": "node scripts/validate-data.mjs data/all-movies.csv",
     "embeddings:dry-run": "node scripts/test-embeddings.mjs --limit 5",
     "embeddings:test": "node scripts/test-embeddings.mjs --live --limit 5",
+    "test": "node --test tests/*.test.mjs",
     "test:offline": "node --test tests/*.test.mjs",
     "embeddings:local": "node scripts/test-local-embeddings.mjs",
     "embeddings:build:dry-run": "node scripts/build-local-embeddings.mjs --dry-run",
     "embeddings:build:sample": "node scripts/build-local-embeddings.mjs --sample",
     "db:ingest:dry-run": "node scripts/ingest-movies.mjs --limit 5",
     "db:ingest:sample": "node scripts/ingest-movies.mjs --apply --limit 5",
-    "db:vector:test": "node scripts/test-vector-search.mjs"
+    "db:vector:test": "node scripts/test-vector-search.mjs",
+    "db:batch": "node scripts/ingest-batch.mjs",
+    "db:batch:dry-run": "node scripts/ingest-batch.mjs --dry-run",
+    "db:batch:sample": "node scripts/ingest-batch.mjs --apply --limit 10 --infer-missing"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",

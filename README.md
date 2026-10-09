@@ -160,6 +160,26 @@ Each document uses the stable movie ID as `_id` and stores the full plot, source
 
 The sample's complete Wikipedia plots and metadata retain the attribution and **CC BY-SA 4.0** obligations described in [data/ATTRIBUTION.md](data/ATTRIBUTION.md). Database copies and any downstream display must preserve article links, contributor attribution, change notices, and ShareAlike terms where applicable. Review exceptional article notices before broader distribution. A future full-dataset ingestion needs explicit authorization, batching, resumability, budget and quota controls, and per-record licensing review; this CLI deliberately caps writes at five movie IDs.
 
+### Resumable local batch ingestion (Milestone 6B)
+
+The batch command validates all 1,100 unified movie IDs and orders them deterministically: the existing five-record sample comes first, followed by SHA-256-ranked IDs. **This milestone permits at most ten movie IDs per apply run.** The dry run reports the selected records, local cache state, chunk estimate, and a full-dataset batch-count *estimate* without calling Astra DB, running inference, or writing vectors.
+
+```bash
+npm run db:batch:dry-run
+npm run db:batch:sample
+node scripts/ingest-batch.mjs --apply --limit 10 --batch-size 5 --infer-missing --resume
+```
+
+Use `npm.cmd` in PowerShell if npm's script shim is blocked. The CLI defaults to dry-run. `--apply` is mandatory for database writes; `--limit` and `--batch-size` each accept only 1–10, with a default of 10. `--infer-missing` explicitly permits **local CPU inference** for absent cache entries and is included in `db:batch:sample`. Without it, a cache miss fails that record. Corrupt cache entries are rejected even when inference is enabled. The batch command uses the existing `movies_local_384` collection and refuses to create, drop, or reconfigure it. No OpenAI request is made.
+
+The document builder checks the SHA-256 hash of the current normalized title, genre, and plot against the embedding's cache provenance. That provenance must match the local provider, pinned model revision, 384 dimensions, tokenizer chunk settings, and aggregation version; the vector and chunk metadata must match the cache integrity checksum. Invalid dimensions, nonfinite values, or a non-unit vector are rejected before any write. Changed source content has a new cache identity and cannot reuse an old vector. The existing five-record command remains available.
+
+Writes are sequential, with a 100 ms interval between records. Transient Astra failures receive at most three attempts with bounded exponential delays. After an uncertain write, the pipeline reads the document remotely before considering another upsert. Every successful or skipped document is read back by ID and checked for metadata, hash, vector validity, agreement with the validated cache vector within float precision, and unique ID. Data API documents above four million JSON characters are rejected; this command sends one document per write rather than bulk inserts, staying below the [published Data API batch limits](https://docs.datastax.com/en/astra-db-serverless/api-reference/dataapi-limits.html).
+
+Progress is recorded after each record in ignored `data/cache/ingestion/local-movies-384.json` through a temporary file and atomic rename. The checkpoint includes hashes of the CSV bytes and ingestion configuration, per-record outcomes, and only fully verified batch completions. `--resume` verifies claimed successes against Astra before skipping them; a missing or mismatched remote document is repaired through the normal upsert path. An incompatible or corrupt checkpoint fails closed. To start anew after a dataset or configuration change, review the change and run without `--resume`; this replaces the local state file. It does not delete remote documents.
+
+CPU inference time depends on plot length and chunk count; network latency, retries, and Astra consumption can add time and cost. The ten-record sample contains five previously ingested movies and up to five new local embeddings. This milestone exposes no full-dataset apply mode. Before a future 1,100-record run, obtain explicit approval for the expanded write scope, review source licensing and Astra capacity/costs, and add operational monitoring. The Wikipedia plot attribution and CC BY-SA 4.0 obligations in [data/ATTRIBUTION.md](data/ATTRIBUTION.md) still apply to database copies and downstream display.
+
 ### OpenAI option
 
 Set `EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY` in ignored `.env.local` for server-side OpenAI use. `OPENAI_EMBEDDING_MODEL` defaults to `text-embedding-3-small`; the service also accepts `text-embedding-3-large` with an explicit 1,536-dimension output. The existing OpenAI retry and validation logic remains in place. The separate OpenAI sample commands below explicitly select that provider; running the local command never selects it.
