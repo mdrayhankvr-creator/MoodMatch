@@ -180,6 +180,17 @@ Progress is recorded after each record in ignored `data/cache/ingestion/local-mo
 
 CPU inference time depends on plot length and chunk count; network latency, retries, and Astra consumption can add time and cost. The ten-record sample contains five previously ingested movies and up to five new local embeddings. This milestone exposes no full-dataset apply mode. Before a future 1,100-record run, obtain explicit approval for the expanded write scope, review source licensing and Astra capacity/costs, and add operational monitoring. The Wikipedia plot attribution and CC BY-SA 4.0 obligations in [data/ATTRIBUTION.md](data/ATTRIBUTION.md) still apply to database copies and downstream display.
 
+### Full dataset readiness preflight (Milestone 6C)
+
+```powershell
+npm.cmd run db:preflight
+npm.cmd run db:preflight:remote
+```
+
+The default preflight validates all 1,100 movie IDs and source identities, current content hashes, the pinned local model, tokenizer chunk counts, and cache checksums. It loads the local model with downloads disabled but performs no inference, database access, or writes. The `--remote-read-only` variant additionally checks the existing Astra collection and verifies stored records against valid local cache vectors. The report includes cache coverage, missing chunks, existing documents, candidate future writes, optional metadata gaps, and observed memory. See [data/INGESTION_READINESS.md](data/INGESTION_READINESS.md) for the latest reviewed snapshot and source licensing limits.
+
+Full ingestion remains disabled. The planner describes small batches (at most ten) and bounded concurrency (at most two); neither preflight command accepts `--apply`. M6B's ten-record cap remains in force. A future, separately approved execution milestone must add an explicit gate and write path, preserve provider and provenance validation before every write, infer missing embeddings only with explicit authorization, and read back every result. Its separate versioned checkpoint must include dataset/configuration fingerprints and per-record progress. On interruption, stop scheduling, preserve uncertain outcomes, then reconcile against Astra before skipping or retrying. The existing M6B sample checkpoint is read without modification and cannot authorize a full run. Monitor per-batch completions, failures, retries, cache use, and remote verification; confirm Astra account limits and application-level monitoring before enabling writes.
+
 ### OpenAI option
 
 Set `EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY` in ignored `.env.local` for server-side OpenAI use. `OPENAI_EMBEDDING_MODEL` defaults to `text-embedding-3-small`; the service also accepts `text-embedding-3-large` with an explicit 1,536-dimension output. The existing OpenAI retry and validation logic remains in place. The separate OpenAI sample commands below explicitly select that provider; running the local command never selects it.
