@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db": "node scripts/test-astra.mjs"
+    "db": "node scripts/test-astra.mjs",
+    "data": "node scripts/prepare-data.mjs",
+    "data:validate": "node scripts/validate-data.mjs"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",
