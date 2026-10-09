@@ -16,10 +16,12 @@
     "data:all": "node scripts/validate-data.mjs data/all-movies.csv",
     "embeddings:dry-run": "node scripts/test-embeddings.mjs --limit 5",
     "embeddings:test": "node scripts/test-embeddings.mjs --live --limit 5",
-    "test:offline": "node --test tests/*.test.mjs"
+    "test:offline": "node --test tests/*.test.mjs",
+    "embeddings:local": "node scripts/test-local-embeddings.mjs"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",
+    "@huggingface/transformers": "4.3.1",
     "cheerio": "1.0.0",
     "csv-parser": "^3.2.1",
     "dotenv": "^18.0.6",

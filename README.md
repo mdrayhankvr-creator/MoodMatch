@@ -6,7 +6,7 @@ MoodMatch is a planned semantic, vibe-based movie search application. The reposi
 
 - Next.js 16 (App Router), React 19, TypeScript, and Tailwind CSS 4
 - Astra DB TypeScript SDK for future vector storage
-- OpenAI SDK for future embeddings
+- `@huggingface/transformers` for local CPU embeddings, with the OpenAI SDK available as an optional provider
 - `csv-parser` for local CSV preparation and validation, `cheerio` for parsing MediaWiki API section HTML, and `dotenv` for scripts
 - npm for package management
 
@@ -25,8 +25,10 @@ If `.env.local` does not already exist, copy `.env.example` to `.env.local`, the
 | `ASTRA_DB_APPLICATION_TOKEN` | Astra DB application token |
 | `ASTRA_DB_API_ENDPOINT` | Astra DB API endpoint |
 | `ASTRA_DB_COLLECTION` | Collection name; example uses `movies` |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `OPENAI_EMBEDDING_MODEL` | Embedding model name; example uses `text-embedding-3-small` |
+| `EMBEDDING_PROVIDER` | `local` (default) or `openai` |
+| `LOCAL_EMBEDDING_MODEL` | Local model; currently `Xenova/all-MiniLM-L6-v2` |
+| `OPENAI_API_KEY` | OpenAI API key; required only for OpenAI requests |
+| `OPENAI_EMBEDDING_MODEL` | OpenAI model; defaults to `text-embedding-3-small` |
 
 ## Local development
 
@@ -110,9 +112,24 @@ To add verified movies later, update the appropriate source CSV through its docu
 
 The unified CSV is an adaptation of the two source datasets and is distributed under **CC BY-SA 4.0** for the Wikipedia article text. Each row retains its article URL and contributor history; [data/ATTRIBUTION.md](data/ATTRIBUTION.md) records the change notice and exceptional licensing caveat. Source articles and metadata can change, and the combined set is a curated sample rather than a complete film catalogue. The offline merge does not resolve different redirect URLs that point to the same article.
 
-## OpenAI embedding engine
+## Embedding providers
 
-Set `OPENAI_API_KEY` in ignored `.env.local` to use the live embedding test. `OPENAI_EMBEDDING_MODEL` defaults to `text-embedding-3-small`; the service also accepts `text-embedding-3-large` with an explicit 1,536-dimension output. The Next.js entry points in `lib/openai.ts` and `lib/embeddings.ts` are server-only. The Node test script and those entry points share the same runtime validation and retry logic.
+The server-only `lib/embeddings.ts` exposes `embedText`, `embedBatch`, provider/model IDs, dimensions, and a content hash that includes the provider and model. It uses `EMBEDDING_PROVIDER=local` by default. Both providers use the same stable `Title`, optional `Genre`, and full `Plot` input format. An OpenAI key is unnecessary in local mode. The local model is loaded only when first used and reused for later requests. The local model is imported dynamically on the server; client components must not import this service.
+
+The local provider uses [`Xenova/all-MiniLM-L6-v2`](https://huggingface.co/Xenova/all-MiniLM-L6-v2), licensed **Apache 2.0**, with mean pooling and normalization to produce **384-dimensional** vectors. It runs on the CPU in Node.js on Windows; first use downloads model files from Hugging Face into the ignored `node_modules/@huggingface/transformers/.cache/` directory. The initial download was about **87 MiB** in this environment. Later runs use that cache. A network connection and adequate disk space are needed for the first run; CPU inference time varies by machine. Model artifacts are not committed.
+
+```bash
+npm run embeddings:local
+npm run test:offline
+```
+
+`embeddings:local` analyzes all 1,100 movie inputs with the model tokenizer, writes the deterministic [local input report](data/LOCAL_INPUT_REPORT.md), and embeds a stable sample of five eligible, genuine records. It prints only movie IDs, vector dimensions, and elapsed processing times. `--limit 1..5` can reduce the sample. It makes no OpenAI calls or Astra DB writes and does not store vectors. The current report finds **419** inputs that fit in full and **681** that require chunking. The local provider counts tokenizer IDs without truncation and rejects inputs above **256 tokens**, including special tokens, before inference. The [underlying model card](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) says longer inputs are normally truncated; this limit deliberately prevents a partial plot from being represented as a full one. M5B will address chunking and aggregation. Dataset plot text remains unchanged.
+
+Vector collections must remain separate by model and dimension: use `movies_local_384` for local vectors and `movies_openai_1536` for OpenAI vectors when ingestion is implemented. No collection is created by these scripts.
+
+### OpenAI option
+
+Set `EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY` in ignored `.env.local` for server-side OpenAI use. `OPENAI_EMBEDDING_MODEL` defaults to `text-embedding-3-small`; the service also accepts `text-embedding-3-large` with an explicit 1,536-dimension output. The existing OpenAI retry and validation logic remains in place. The separate OpenAI sample commands below explicitly select that provider; running the local command never selects it.
 
 ```bash
 npm run embeddings:dry-run
@@ -120,8 +137,8 @@ npm run test:offline
 npm run embeddings:test
 ```
 
-The dry run needs no API key. It selects five actual, deterministic records from `data/all-movies.csv`, formats each input as `Title`, optional `Genre`, and `Plot`, and reports a one-call plan. The live command makes **one batched embeddings request** for at most five movies and prints IDs, titles, vector dimensions, and the API's aggregate input-token usage. It does not save vectors or write to Astra DB. Both commands require `--limit 1..5` when invoking `scripts/test-embeddings.mjs` directly; only `--live` enables network requests. Confirm API billing and quota before running the live command. A ChatGPT subscription does not cover API usage.
+The dry run needs no API key. It selects five actual, deterministic records from `data/all-movies.csv`, formats each input as `Title`, optional `Genre`, and `Plot`, and reports a one-call plan. The live command makes **one batched OpenAI embeddings request** for at most five movies and prints IDs, titles, vector dimensions, and the API's aggregate input-token usage. It does not save vectors or write to Astra DB. Both commands require `--limit 1..5` when invoking `scripts/test-embeddings.mjs` directly; only `--live` enables network requests. Confirm API billing and quota before running the live command. A ChatGPT subscription does not cover API usage. The M5 OpenAI live test returned a quota or billing error, so that integration remains unverified; M5A did not make a paid API request.
 
-The service rejects empty text, batches above 2,048 inputs, and text or batches whose UTF-8 byte counts exceed the 8,192-token per-input or 300,000-token per-request ceilings. Byte counts are conservative token upper bounds, not exact token counts; some valid long inputs may be rejected. Plots are never truncated. The sample script reports how many source rows exceed that safety bound. API rate limits, timeouts, and transient server errors receive at most two retries with bounded backoff; authentication and quota errors fail immediately. For future incremental embedding updates, `embeddingContentHash` hashes the model and formatted input, so content or model changes produce a new key.
+The OpenAI service rejects empty text, batches above 2,048 inputs, and text or batches whose UTF-8 byte counts exceed the 8,192-token per-input or 300,000-token per-request ceilings. Byte counts are conservative token upper bounds, not exact token counts; some valid long inputs may be rejected. Plots are never truncated. The sample script reports how many source rows exceed that safety bound. API rate limits, timeouts, and transient server errors receive at most two retries with bounded backoff; authentication and quota errors fail immediately. For future incremental embedding updates, `embeddingContentHash` hashes the provider, model, and formatted input, so content or model changes produce a new key.
 
 The [official OpenAI model pricing](https://developers.openai.com/api/docs/models/text-embedding-3-small) lists `text-embedding-3-small` at **$0.02 per 1 million input tokens** as of October 2026. Estimate a direct embedding request as `actual input tokens × 0.02 / 1,000,000` USD, excluding any applicable taxes or other account charges. The live script reports the actual token count; the dry run reports only a conservative ceiling. Recheck current pricing before estimating a different model or a later run. [OpenAI's embeddings guide](https://developers.openai.com/api/docs/guides/embeddings) documents the 1,536-dimension default, and the [API reference](https://developers.openai.com/api/reference/resources/embeddings/methods/create) documents request limits.
