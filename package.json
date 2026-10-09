@@ -13,7 +13,10 @@
     "data:validate": "node scripts/validate-data.mjs",
     "data:fetch-recent": "node scripts/fetch-recent-movies.mjs",
     "data:recent": "node scripts/validate-data.mjs data/recent-movies.csv",
-    "data:all": "node scripts/validate-data.mjs data/all-movies.csv"
+    "data:all": "node scripts/validate-data.mjs data/all-movies.csv",
+    "embeddings:dry-run": "node scripts/test-embeddings.mjs --limit 5",
+    "embeddings:test": "node scripts/test-embeddings.mjs --live --limit 5",
+    "test:offline": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",
