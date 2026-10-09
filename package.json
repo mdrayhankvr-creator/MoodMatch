@@ -26,7 +26,9 @@
     "db:vector:test": "node scripts/test-vector-search.mjs",
     "db:batch": "node scripts/ingest-batch.mjs",
     "db:batch:dry-run": "node scripts/ingest-batch.mjs --dry-run",
-    "db:batch:sample": "node scripts/ingest-batch.mjs --apply --limit 10 --infer-missing"
+    "db:batch:sample": "node scripts/ingest-batch.mjs --apply --limit 10 --infer-missing",
+    "db:preflight": "node scripts/preflight-ingestion.mjs",
+    "db:preflight:remote": "node scripts/preflight-ingestion.mjs --remote-read-only"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",
