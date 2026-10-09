@@ -17,7 +17,9 @@
     "embeddings:dry-run": "node scripts/test-embeddings.mjs --limit 5",
     "embeddings:test": "node scripts/test-embeddings.mjs --live --limit 5",
     "test:offline": "node --test tests/*.test.mjs",
-    "embeddings:local": "node scripts/test-local-embeddings.mjs"
+    "embeddings:local": "node scripts/test-local-embeddings.mjs",
+    "embeddings:build:dry-run": "node scripts/build-local-embeddings.mjs --dry-run",
+    "embeddings:build:sample": "node scripts/build-local-embeddings.mjs --sample"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",
