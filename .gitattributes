@@ -1,2 +1,3 @@
 data/movies.csv text eol=lf
 data/recent-movies.csv text eol=lf
+data/all-movies.csv text eol=lf

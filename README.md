@@ -1,6 +1,6 @@
 # MoodMatch
 
-MoodMatch is a planned semantic, vibe-based movie search application. The repository contains the Next.js starter page, a server-only Astra DB connection utility, a historical movie dataset pipeline, and a recent movie acquisition pipeline. Search and database ingestion are not implemented yet.
+MoodMatch is a planned semantic, vibe-based movie search application. The repository contains the Next.js starter page, a server-only Astra DB connection utility, historical and recent movie pipelines, and a unified CSV dataset. Search and database ingestion are not implemented yet.
 
 ## Tech stack
 
@@ -55,11 +55,11 @@ kaggle datasets download jrobischon/wikipedia-movie-plots -p data/raw --unzip
 Kaggle may require a free account or API authentication. Place the extracted file at `data/raw/wiki_movie_plots_deduped.csv`. The preparation command also accepts a different raw CSV path as its first argument. The raw file is intentionally untracked.
 
 ```bash
-npm run data
+npm run data:prepare
 npm run data:validate
 ```
 
-On Windows PowerShell, use `npm.cmd run data` and `npm.cmd run data:validate`. Preparation streams the 81,193,310-byte source CSV, keeps bounded candidates per decade and genre group, and replaces `data/movies.csv` only after a successful run. Repeating it with the same source produces identical bytes. It does not shorten long plots.
+On Windows PowerShell, use `npm.cmd run data:prepare` and `npm.cmd run data:validate`. Preparation streams the 81,193,310-byte source CSV, keeps bounded candidates per decade and genre group, and replaces `data/movies.csv` only after a successful run. Repeating it with the same source produces identical bytes. It does not shorten long plots.
 
 ### Output schema
 
@@ -94,3 +94,18 @@ Use `npm.cmd` on PowerShell installations that block npm's script shim. `--max` 
 Discovery uses the 2019–2026 film categories, samples candidates deterministically, checks Wikidata metadata, then extracts a Plot, Plot summary, Synopsis, or Story section. It excludes pages without a usable section, unverifiable release year, film type, or genre, and plots below 120 characters or 20 words. It removes markup and reference markers, normalizes whitespace, and caps one release year at 25% of the selected set. Plot prose is preserved without AI rewriting or length truncation. Category membership, Wikidata claims, and article sections can be incomplete or change over time. The default discovery examines only the first 1,000 category members per year before the stable sample, so it is not a complete or statistically representative catalogue. Genre labels are Wikidata labels, not a controlled taxonomy; future-dated films are excluded as of the requested date.
 
 The committed snapshot uses `--as-of 2026-10-09 --max 100 --candidate-limit 1000`. It discovered 8,000 category pages, sampled 1,200 candidates, and retained **100 movies**: 2019–2021 and 2025 have 15 each; 2022–2024 and 2026 have 10 each. Among checked candidates, 68 lacked a verified film claim, 393 lacked a release-date claim, 36 had no matching release year, 144 lacked genre claims, 48 lacked a suitable plot section, four had short plots, and one repeated a verified identity. All selected lead sections were available, and no checked lead or plot section triggered the copyright-warning filter. Plot lengths range from 121 to 9,493 characters (median 1,541). The CSV SHA-256 is `7bd62c8ec47739dee977995dcd2f32905080d1deeba00e7144c26506e33f922c`; a cached rerun produced identical bytes. The plot exclusion counts stop once the target of 100 is reached, so they are not exhaustive counts for all 1,200 sampled pages.
+
+## Unified movie dataset
+
+`data/all-movies.csv` combines the validated historical and recent files with the same `id,title,year,genre,plot,source_url` schema. The generated [dataset report](data/DATASET_REPORT.md) records input counts, exclusions, year and genre distribution, plot lengths, and file hashes. The current snapshot has **1,100 movies**: 1,000 historical and 100 recent records, with no cross-dataset duplicates.
+
+```bash
+npm run data
+npm run data:all
+```
+
+`npm run data` only merges the two committed source CSVs; it does not call external APIs or rewrite them. `data:all` checks CSV encoding and fields, ID and article uniqueness, year and URL validity, full source-record preservation, and coverage of both inputs. On Windows PowerShell, use `npm.cmd`. Identical inputs produce identical output and report bytes. The merger keeps existing IDs when unique. If two distinct articles share an input ID, both receive deterministic IDs derived from their source article identities. Records sharing a title and year remain separate when their article identities differ.
+
+To add verified movies later, update the appropriate source CSV through its documented acquisition pipeline or add a properly attributed row using the existing six-column schema. Use the `movieId` helper in `scripts/movie-data.mjs` for an ordinary row; use `sourceMovieId` if another film has the same title and year. Run `npm run data:validate` for historical changes or `npm run data:recent` for recent changes, then run `npm run data` and `npm run data:all`. The historical source preparation command remains `npm run data:prepare` and requires the ignored Kaggle raw download. The recent acquisition command remains `npm run data:fetch-recent`; it uses Wikimedia APIs and may update the recent source snapshot. Review the generated report and attribution notice before redistributing changed plots.
+
+The unified CSV is an adaptation of the two source datasets and is distributed under **CC BY-SA 4.0** for the Wikipedia article text. Each row retains its article URL and contributor history; [data/ATTRIBUTION.md](data/ATTRIBUTION.md) records the change notice and exceptional licensing caveat. Source articles and metadata can change, and the combined set is a curated sample rather than a complete film catalogue. The offline merge does not resolve different redirect URLs that point to the same article.
