@@ -43,6 +43,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# local source downloads for dataset preparation
+/data/raw/
+
 # vercel
 .vercel
 
