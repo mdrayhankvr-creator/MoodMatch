@@ -38,6 +38,28 @@ export function canonicalSourceUrl(value) {
   }
 }
 
+export function sourceArticleKey(value) {
+  const canonical = canonicalSourceUrl(value);
+  if (!canonical) return "";
+  const url = new URL(canonical);
+  try {
+    const title = decodeURIComponent(url.pathname.slice("/wiki/".length))
+      .replaceAll("_", " ")
+      .normalize("NFC")
+      .replace(/\s+/gu, " ")
+      .trim();
+    return `${url.hostname.toLowerCase()}/wiki/${title}`;
+  } catch {
+    return "";
+  }
+}
+
+export function sourceMovieId(movie) {
+  const source = sourceArticleKey(movie.source_url);
+  if (!source) throw new Error("Cannot create a movie ID without a valid source article.");
+  return `movie_${createHash("sha256").update(`article:\0${source}`).digest("hex").slice(0, 20)}`;
+}
+
 export function identityKey(movie) {
   const title = movie.title.normalize("NFKC").toLowerCase();
   return movie.year ? `title-year:${title}\0${movie.year}` : `url:${movie.source_url}`;

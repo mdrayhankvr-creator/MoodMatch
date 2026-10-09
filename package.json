@@ -8,10 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "db": "node scripts/test-astra.mjs",
-    "data": "node scripts/prepare-data.mjs",
+    "data": "node scripts/merge-movies.mjs",
+    "data:prepare": "node scripts/prepare-data.mjs",
     "data:validate": "node scripts/validate-data.mjs",
     "data:fetch-recent": "node scripts/fetch-recent-movies.mjs",
-    "data:recent": "node scripts/validate-data.mjs data/recent-movies.csv"
+    "data:recent": "node scripts/validate-data.mjs data/recent-movies.csv",
+    "data:all": "node scripts/validate-data.mjs data/all-movies.csv"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",
