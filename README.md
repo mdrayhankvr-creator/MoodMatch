@@ -123,9 +123,25 @@ npm run embeddings:local
 npm run test:offline
 ```
 
-`embeddings:local` analyzes all 1,100 movie inputs with the model tokenizer, writes the deterministic [local input report](data/LOCAL_INPUT_REPORT.md), and embeds a stable sample of five eligible, genuine records. It prints only movie IDs, vector dimensions, and elapsed processing times. `--limit 1..5` can reduce the sample. It makes no OpenAI calls or Astra DB writes and does not store vectors. The current report finds **419** inputs that fit in full and **681** that require chunking. The local provider counts tokenizer IDs without truncation and rejects inputs above **256 tokens**, including special tokens, before inference. The [underlying model card](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) says longer inputs are normally truncated; this limit deliberately prevents a partial plot from being represented as a full one. M5B will address chunking and aggregation. Dataset plot text remains unchanged.
+`embeddings:local` analyzes all 1,100 movie inputs with the model tokenizer, writes the deterministic [local input report](data/LOCAL_INPUT_REPORT.md), and embeds a stable sample of five eligible, genuine records. It prints only movie IDs, vector dimensions, and elapsed processing times. `--limit 1..5` can reduce the sample. It makes no OpenAI calls or Astra DB writes and does not store vectors. The current report finds **419** inputs that fit in full and **681** that require chunking. This original M5A command still rejects inputs above **256 tokens**, including special tokens, before inference. The [underlying model card](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) says longer inputs are normally truncated; this limit prevents a partial plot from being represented as a full one. The M5B commands below handle long plots through verified chunking. Dataset plot text remains unchanged.
 
 Vector collections must remain separate by model and dimension: use `movies_local_384` for local vectors and `movies_openai_1536` for OpenAI vectors when ingestion is implemented. No collection is created by these scripts.
+
+### Tokenizer-aware local chunking and cache
+
+The local model is pinned to Hugging Face revision `751bff37182d3f1213fa05d7196b954e230abad9`. Its input safety limit remains **256 tokens including special tokens**. `lib/chunking.mjs` splits the normalized plot at Unicode grapheme boundaries, preferring punctuation or whitespace near each boundary. It aims for at most **220 plot tokens per chunk** with about **20 tokens of context overlap**, allowing for the repeated title and genre prefix. The exact MiniLM tokenizer verifies every final input before inference. Non-overlapping core spans concatenate to the complete normalized plot, so no plot content is silently truncated. An input whose prefix and even one grapheme cannot fit fails explicitly.
+
+The chunking and aggregation functions accept general title, optional genre, and description fields; future TV-series descriptions can use the same pipeline with their own stable record IDs. Each chunk receives a real 384-dimensional local embedding. Aggregation weights each chunk by the number of non-whitespace Unicode code points in its **unique core span**, excluding overlap from the weight, then L2-normalizes the combined vector. This is a deterministic approximation: a single vector can still blur distinct parts of a long plot, and repeated title/genre context appears in each chunk.
+
+```bash
+npm run embeddings:build:dry-run
+npm run embeddings:build:sample
+npm run embeddings:build:sample
+```
+
+The dry run tokenizes all 1,100 movies and reports estimated chunks and token compliance without inference or vector writes. The current dataset yields **3,140 chunks**, including the **681** long inputs identified above; no assembled chunk exceeds 256 tokens. The sample command selects five stable real IDs, including two long plots, and saves only their local vectors in ignored `data/cache/embeddings/local/`. Run it twice: the first run builds missing entries and the second reports cache hits without repeat inference. `--limit 2..5` is supported for the sample; full-dataset inference is disabled in this milestone. Neither command calls OpenAI or Astra DB. A first run can download the pinned model revision and needs network access, CPU time, and local disk space.
+
+Cache files use stable record IDs and SHA-256 keys over normalized source text, provider, model, pinned revision, chunk settings, and aggregation version. Each file stores the normalized-source hash, 384-dimensional vector, chunk count, and chunk metadata. Entries are checked for matching identity, dimensions, finite values, unit norm, and integrity before reuse; invalid entries are rebuilt. Files are written through a temporary file and atomic rename, so an interrupted write does not become a valid cache hit. To rebuild after a source, model, or configuration change, rerun the sample command; the changed identity creates a new entry. To discard obsolete local entries, remove only the ignored `data/cache/embeddings/local/` directory after checking its path. Cache paths reserve separate provider namespaces; this command writes only to the local namespace. Generated vectors and model artifacts are not committed.
 
 ### OpenAI option
 

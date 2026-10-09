@@ -46,6 +46,7 @@ yarn-error.log*
 # local source downloads for dataset preparation
 /data/raw/
 /data/cache/
+/data/cache/embeddings/
 
 # vercel
 .vercel

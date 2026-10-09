@@ -30,6 +30,7 @@ export type SingleEmbedding = {
 export type EmbeddingProvider = {
   id: ProviderId;
   modelId: string;
+  modelRevision?: string;
   dimensions: number;
   embedText(text: string): Promise<SingleEmbedding>;
   embedBatch(texts: string[]): Promise<EmbeddingBatch>;
