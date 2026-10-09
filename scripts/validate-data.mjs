@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import csv from "csv-parser";
 import {
@@ -17,6 +17,7 @@ import {
 } from "./movie-data.mjs";
 
 const INPUT_PATH = resolve(process.argv[2] ?? "data/movies.csv");
+const IS_RECENT = basename(INPUT_PATH) === "recent-movies.csv";
 
 function sortedCounts(counts) {
   return Object.fromEntries([...counts].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
@@ -28,6 +29,7 @@ async function validate() {
   const seenUrls = new Set();
   const plotLengths = [];
   const decades = new Map();
+  const years = new Map();
   const genres = new Map();
   const parser = csv({ strict: true });
   let headerSeen = false;
@@ -51,6 +53,10 @@ async function validate() {
       }
       if (!validPlot(movie.plot)) throw new Error(`Row ${count}: plot is too short.`);
       if (!validYear(movie.year)) throw new Error(`Row ${count}: release year is invalid.`);
+      if (IS_RECENT && (!movie.year || Number(movie.year) < 2019 || Number(movie.year) > 2026)) {
+        throw new Error(`Row ${count}: recent movie year must be 2019–2026.`);
+      }
+      if (IS_RECENT && !movie.genre) throw new Error(`Row ${count}: genre is required for recent movies.`);
       if (!movie.source_url || canonicalSourceUrl(movie.source_url) !== movie.source_url) {
         throw new Error(`Row ${count}: source URL is invalid.`);
       }
@@ -68,6 +74,7 @@ async function validate() {
       plotLengths.push([...movie.plot].length);
       const decadeKey = decade(movie);
       const genreKey = genreGroup(movie.genre);
+      if (movie.year) years.set(movie.year, (years.get(movie.year) ?? 0) + 1);
       decades.set(decadeKey, (decades.get(decadeKey) ?? 0) + 1);
       genres.set(genreKey, (genres.get(genreKey) ?? 0) + 1);
     }
@@ -86,6 +93,7 @@ async function validate() {
       max: plotLengths[count - 1],
     },
     byDecade: sortedCounts(decades),
+    ...(IS_RECENT ? { byYear: sortedCounts(years) } : {}),
     byGenreGroup: sortedCounts(genres),
   }, null, 2));
 }

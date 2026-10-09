@@ -9,10 +9,13 @@
     "lint": "eslint",
     "db": "node scripts/test-astra.mjs",
     "data": "node scripts/prepare-data.mjs",
-    "data:validate": "node scripts/validate-data.mjs"
+    "data:validate": "node scripts/validate-data.mjs",
+    "data:fetch-recent": "node scripts/fetch-recent-movies.mjs",
+    "data:recent": "node scripts/validate-data.mjs data/recent-movies.csv"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",
+    "cheerio": "1.0.0",
     "csv-parser": "^3.2.1",
     "dotenv": "^18.0.6",
     "next": "16.4.0",
