@@ -5,7 +5,7 @@ import { loadIngestionEnvironment } from "../lib/ingestion-environment.mjs";
 import { readUnifiedMovies } from "../lib/movie-ingestion-sample.mjs";
 import { MigrationPlanError, parseMigrationArgs,
   planV2Migration } from "../lib/vector-migration-plan.mjs";
-import { assertV2MigrationApproved,
+import { assertV2MigrationApproved, MigrationExecutionError,
   executeV2Migration } from "../lib/vector-v2-live-migration.mjs";
 
 async function main() {
@@ -23,9 +23,22 @@ async function main() {
 
 try { await main(); }
 catch (error) {
-  const knownConfiguration = error instanceof MigrationPlanError ||
-    error?.name === "CollectionConfigurationError" ||
-    /^(?:Existing v2 collection|Expected 1100 unified movie records|ASTRA_DB_|\.env\.local)/u.test(error?.message ?? "");
-  console.error(knownConfiguration ? error.message : safeAstraError(error));
-  process.exitCode = 1;
+  if (error instanceof MigrationExecutionError) {
+    const cause = error.cause;
+    const knownCause = cause instanceof MigrationPlanError ||
+      cause?.name === "CollectionConfigurationError";
+    console.error(JSON.stringify({
+      error: knownCause ? cause.message : safeAstraError(cause),
+      phase: error.phase,
+      completed: error.results.length,
+      results: error.results,
+    }, null, 2));
+    process.exitCode = 1;
+  } else {
+    const knownConfiguration = error instanceof MigrationPlanError ||
+      error?.name === "CollectionConfigurationError" ||
+      /^(?:Existing v2 collection|Expected 1100 unified movie records|ASTRA_DB_|\.env\.local)/u.test(error?.message ?? "");
+    console.error(knownConfiguration ? error.message : safeAstraError(error));
+    process.exitCode = 1;
+  }
 }

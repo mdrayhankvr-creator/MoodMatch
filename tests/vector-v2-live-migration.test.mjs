@@ -10,7 +10,10 @@ import { LOCAL_COLLECTION } from "../lib/movie-vector-store.mjs";
 import { V2_COLLECTION, V2_COLLECTION_DEFINITION,
   makeV2MovieDocument, resolveLocalVectorCollection } from "../lib/vector-schema.mjs";
 import { parseMigrationArgs, planV2Migration } from "../lib/vector-migration-plan.mjs";
-import { assertV2MigrationApproved, ensureV2Collection, executeV2Migration,
+import { APPROVED_LEGACY_SNAPSHOT_HASH, APPROVED_V2_MIGRATION_RECORDS,
+  assertApprovedV2MigrationScope, assertV2MigrationApproved, executeV2Migration,
+  MigrationExecutionError,
+  reconcileV2CreationFailure,
   verifyExactV2Document, verifyV2Descriptor, verifyV2Inventory,
   verifyV2LiveState, verifyV2MetadataFilters,
   verifyV2VectorSearch } from "../lib/vector-v2-live-migration.mjs";
@@ -28,7 +31,23 @@ const expected = Array.from({ length: 10 }, (_, index) => ({
 }));
 const records = expected.map((doc) => ({ id: doc._id, sourceHash: doc.content_hash }));
 
-function mockCollection(documents = expected) {
+test("paused apply gate rejects before database access while dry-run stays the default", async () => {
+  assert.deepEqual(parseMigrationArgs([]), { mode: "dry-run" });
+  assert.deepEqual(parseMigrationArgs(["--apply", "--confirm-v2-migration"]), { mode: "apply" });
+  assert.throws(assertV2MigrationApproved, /approval gate is closed/);
+  let reads = 0;
+  let writes = 0;
+  const db = {
+    async listCollections() { reads += 1; return []; },
+    async createCollection() { writes += 1; },
+  };
+  await assert.rejects(executeV2Migration({ db, movies: [], provider: null }),
+    /approval gate is closed/);
+  assert.deepEqual({ reads, writes }, { reads: 0, writes: 0 });
+});
+
+function mockCollection(documents = expected, options = {}) {
+  const similarity = Object.hasOwn(options, "similarity") ? options.similarity : 1;
   const calls = { writes: 0, reads: 0 };
   const collection = {
     async countDocuments(filter) {
@@ -44,9 +63,14 @@ function mockCollection(documents = expected) {
       calls.reads += 1;
       const filtered = documents.filter((doc) => Object.entries(filter).every(([key, value]) => doc[key] === value));
       return { async toArray() {
+        if (options.sort?.$vector && options.includeSimilarity !== true) {
+          throw new Error("Vector verification must request similarity scores.");
+        }
         return (options.sort ? [...filtered].sort((a, b) => a._id.localeCompare(b._id)) : filtered)
           .slice(0, options.limit ?? filtered.length)
-          .map((doc) => options.projection?.$vector ? { ...doc, $vector: new DataAPIVector(doc.$vector) } : { ...doc });
+          .map((doc) => options.sort?.$vector
+            ? { _id: doc._id, $similarity: similarity }
+            : options.projection?.$vector ? { ...doc, $vector: new DataAPIVector(doc.$vector) } : { ...doc });
       } };
     },
     async insertOne() { calls.writes += 1; throw new Error("write forbidden"); },
@@ -56,17 +80,55 @@ function mockCollection(documents = expected) {
   return { collection, calls };
 }
 
-test("hardcoded approval gate rejects direct and CLI-shaped execution before any database access", async () => {
-  assert.deepEqual(parseMigrationArgs(["--apply", "--confirm-v2-migration"]), { mode: "apply" });
-  assert.throws(assertV2MigrationApproved, /M6D\.3B milestone gate/);
-  const calls = { reads: 0, writes: 0 };
-  const db = {
-    async listCollections() { calls.reads += 1; return []; },
-    async createCollection() { calls.writes += 1; throw new Error("write forbidden"); },
+test("approval scope pins exactly ten reviewed IDs, hashes, and the legacy snapshot", () => {
+  assert.equal(APPROVED_V2_MIGRATION_RECORDS.length, 10);
+  assert.equal(new Set(APPROVED_V2_MIGRATION_RECORDS.map((record) => record.id)).size, 10);
+  assert.match(APPROVED_LEGACY_SNAPSHOT_HASH, /^[a-f0-9]{64}$/u);
+  const plan = {
+    legacyCollection: LOCAL_COLLECTION, destinationCollection: V2_COLLECTION,
+    legacyCount: 10, legacySnapshotHash: APPROVED_LEGACY_SNAPSHOT_HASH,
+    provider: "local", model: LOCAL_MODEL_ID, revision: LOCAL_MODEL_REVISION,
+    dimensions: LOCAL_DIMENSIONS, destinationState: "missing",
+    records: APPROVED_V2_MIGRATION_RECORDS.map((record) => ({ ...record,
+      destinationStatus: "copy-after-approval" })),
+    counts: { copyAfterApproval: 10, alreadyMatching: 0, conflicts: 0 },
+    hasBlockingRecordConflicts: false,
   };
-  await assert.rejects(ensureV2Collection(db), /M6D\.3B milestone gate/);
-  await assert.rejects(executeV2Migration({ db, movies: [], provider: null }), /M6D\.3B milestone gate/);
-  assert.deepEqual(calls, { reads: 0, writes: 0 });
+  assert.doesNotThrow(() => assertApprovedV2MigrationScope(plan));
+  const replacedId = plan.records.map((record) => ({ ...record }));
+  replacedId[0].id = "movie_ffffffffffffffffffff";
+  const replacedHash = plan.records.map((record) => ({ ...record }));
+  replacedHash[0].sourceHash = "f".repeat(64);
+  for (const changed of [
+    { records: replacedId }, { records: replacedHash },
+    { records: plan.records.slice(0, 9) },
+    { records: [...plan.records, { ...plan.records[0] }] },
+    { legacySnapshotHash: "f".repeat(64) },
+    { destinationCollection: "wrong_collection" },
+    { legacyCollection: "wrong_collection" },
+    { legacyCount: 11 },
+    { provider: "openai" }, { dimensions: 1536 },
+    { counts: { copyAfterApproval: 9, alreadyMatching: 0, conflicts: 0 } },
+    { destinationState: "unexpected" },
+    { hasBlockingRecordConflicts: true },
+  ]) {
+    assert.throws(() => assertApprovedV2MigrationScope({ ...plan, ...changed }));
+  }
+});
+
+test("partial migration result exposes only document IDs and statuses", () => {
+  const cause = new Error("HTTP failure with credential-like private detail");
+  const error = new MigrationExecutionError([
+    { id: APPROVED_V2_MIGRATION_RECORDS[0].id, status: "inserted", token: "secret" },
+    { id: APPROVED_V2_MIGRATION_RECORDS[1].id, status: "reconciled", vector: vector },
+  ], cause, "verify-and-copy:movie_1a48f19ff37d2ebd6587");
+  assert.deepEqual(error.results, [
+    { id: APPROVED_V2_MIGRATION_RECORDS[0].id, status: "inserted" },
+    { id: APPROVED_V2_MIGRATION_RECORDS[1].id, status: "reconciled" },
+  ]);
+  assert.doesNotMatch(error.message, /secret|credential-like|\$vector/u);
+  assert.equal(error.cause, cause);
+  assert.equal(error.phase, "verify-and-copy:movie_1a48f19ff37d2ebd6587");
 });
 
 test("collection definition is client-vector cosine with an explicit safe allowlist", () => {
@@ -91,6 +153,26 @@ test("descriptor inspection reuses an exact v2 definition and rejects incompatib
       definition: { ...V2_COLLECTION_DEFINITION, indexing: { allow: ["plot"] } } }],
   }), /incompatible vector or indexing/);
   await assert.rejects(verifyV2Descriptor({ ...compatible, listCollections: async () => [] }), /missing/);
+});
+
+test("uncertain collection creation is reconciled without another create attempt", async () => {
+  const failure = new Error("create rejected");
+  const { collection } = mockCollection();
+  let creates = 0;
+  const db = {
+    listCollections: async () => [{ name: V2_COLLECTION, definition: V2_COLLECTION_DEFINITION }],
+    collection: () => collection,
+    createCollection: async () => { creates += 1; },
+  };
+  assert.equal(await reconcileV2CreationFailure(db, failure), collection);
+  await assert.rejects(reconcileV2CreationFailure({ ...db,
+    listCollections: async () => [],
+  }, failure), (error) => error === failure);
+  await assert.rejects(reconcileV2CreationFailure({ ...db,
+    listCollections: async () => [{ name: V2_COLLECTION,
+      definition: { ...V2_COLLECTION_DEFINITION, vector: { dimension: 1536, metric: "cosine" } } }],
+  }, failure), /incompatible vector or indexing/);
+  assert.equal(creates, 0);
 });
 
 test("inventory verifies ten hashes and safely identifies partial, duplicate, and unknown records", async () => {
@@ -129,7 +211,8 @@ test("metadata filters and vector retrieval are checked independently with read-
   const { collection, calls } = mockCollection();
   assert.deepEqual(await verifyV2MetadataFilters(collection, expected),
     ["content_type", "genre", "year"]);
-  assert.equal(await verifyV2VectorSearch(collection, expected), true);
+  assert.deepEqual(await verifyV2VectorSearch(collection, expected),
+    { unfilteredScore: 1, filteredScore: 1 });
   assert.equal(calls.writes, 0);
   const ignoresFilters = { find: () => ({ async toArray() {
     return expected.map((doc) => ({ _id: doc._id }));
@@ -137,6 +220,11 @@ test("metadata filters and vector retrieval are checked independently with read-
   await assert.rejects(verifyV2MetadataFilters(ignoresFilters, expected), /genre filter/);
   const broken = mockCollection(expected.slice(1));
   await assert.rejects(verifyV2VectorSearch(broken.collection, expected), /vector similarity/);
+  for (const similarity of [undefined, NaN, Infinity, -Infinity]) {
+    const invalid = mockCollection(expected, { similarity });
+    await assert.rejects(verifyV2VectorSearch(invalid.collection, expected), /vector similarity/);
+    assert.equal(invalid.calls.writes, 0);
+  }
 });
 
 test("combined live verifier checks all ten documents and detects a changed legacy snapshot", async () => {
@@ -175,10 +263,13 @@ test("combined live verifier checks all ten documents and detects a changed lega
   };
   const baseline = await planV2Migration({ db, movies, provider, inspectCache,
     expectedDatasetCount: 10 });
+  assert.deepEqual(baseline.counts,
+    { copyAfterApproval: 0, alreadyMatching: 10, conflicts: 0 });
   assert.deepEqual(await verifyV2LiveState({ db, movies, provider, inspectCache,
     expectedDatasetCount: 10, baselineSnapshot: baseline.legacySnapshotHash }), {
     documents: 10, hashesVerified: true, completePlotsVerified: true,
     filters: ["content_type", "genre", "year"], vectorSearchVerified: true,
+    similarityScores: { unfilteredScore: 1, filteredScore: 1 },
     legacySnapshotUnchanged: true,
   });
   assert.equal(legacy.calls.writes + destination.calls.writes, 0);
