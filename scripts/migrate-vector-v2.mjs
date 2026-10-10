@@ -5,15 +5,20 @@ import { loadIngestionEnvironment } from "../lib/ingestion-environment.mjs";
 import { readUnifiedMovies } from "../lib/movie-ingestion-sample.mjs";
 import { MigrationPlanError, parseMigrationArgs,
   planV2Migration } from "../lib/vector-migration-plan.mjs";
+import { assertV2MigrationApproved,
+  executeV2Migration } from "../lib/vector-v2-live-migration.mjs";
 
 async function main() {
-  parseMigrationArgs(process.argv.slice(2)); // --apply fails before credentials or DB access.
+  const { mode } = parseMigrationArgs(process.argv.slice(2));
+  if (mode === "apply") assertV2MigrationApproved(); // Before credentials or DB access.
   env.allowRemoteModels = false;
   const provider = createEmbeddingProvider({ providerId: "local" });
   const movies = await readUnifiedMovies();
   const db = getAstraDbRuntime(loadIngestionEnvironment());
-  const plan = await planV2Migration({ db, movies, provider });
-  console.log(JSON.stringify(plan, null, 2));
+  const result = mode === "apply"
+    ? await executeV2Migration({ db, movies, provider })
+    : await planV2Migration({ db, movies, provider });
+  console.log(JSON.stringify(result, null, 2));
 }
 
 try { await main(); }

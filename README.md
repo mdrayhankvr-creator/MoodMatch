@@ -199,9 +199,9 @@ Run `npm.cmd run embeddings:benchmark` to measure the pinned local model on nine
 
 Run `npm.cmd run db:schema-v2` for an offline UTF-8 size and selective-indexing assessment of all 1,100 movies. [data/VECTOR_SCHEMA_V2.md](data/VECTOR_SCHEMA_V2.md) defines a proposed `movies_local_384_v2` collection with complete plots stored outside metadata indexing, a guarded descriptor validator, and a future migration and rollback plan. This command performs no inference or database operation. The v2 collection has not been created; full ingestion remains disabled.
 
-### V2 migration preparation (Milestone 6D.3A)
+### V2 migration preparation (Milestones 6D.3A and 6D.3B)
 
-Run `npm.cmd run db:migrate-v2:dry-run` to verify the ten legacy records and their local cache entries, inspect any compatible v2 destination by ID, and print a read-only migration plan. `--apply` is disabled in this milestone. [data/VECTOR_MIGRATION_PLAN.md](data/VECTOR_MIGRATION_PLAN.md) describes the future approval, verification, and rollback steps. The command does not create a collection, migrate a document, or infer an embedding.
+Run `npm.cmd run db:migrate-v2:dry-run` to verify the ten legacy records and their local cache entries, inspect any compatible v2 destination by ID, and print a read-only migration plan. M6D.3B adds guarded collection creation, create-only copying, and reusable readback/filter/vector checks. A future write request requires both `--apply` and `--confirm-v2-migration`, but a hardcoded milestone gate still rejects it before database access. [data/VECTOR_MIGRATION_PLAN.md](data/VECTOR_MIGRATION_PLAN.md) describes the separate approval, verification, and rollback steps. The dry-run does not create a collection, migrate a document, or infer an embedding.
 
 ### OpenAI option
 
