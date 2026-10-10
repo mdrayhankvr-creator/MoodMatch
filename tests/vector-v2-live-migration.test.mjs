@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { DataAPIVector } from "@datastax/astra-db-ts";
+import { DataAPIHttpError, DataAPIResponseError, DataAPIVector } from "@datastax/astra-db-ts";
 import { DEFAULT_CHUNK_CONFIG } from "../lib/chunking.mjs";
 import { makeCacheIdentity } from "../lib/embedding-cache.mjs";
 import { LOCAL_DIMENSIONS, LOCAL_MODEL_ID, LOCAL_MODEL_REVISION } from "../lib/embedding-provider.mjs";
@@ -11,9 +11,11 @@ import { V2_COLLECTION, V2_COLLECTION_DEFINITION,
   makeV2MovieDocument, resolveLocalVectorCollection } from "../lib/vector-schema.mjs";
 import { parseMigrationArgs, planV2Migration } from "../lib/vector-migration-plan.mjs";
 import { APPROVED_LEGACY_SNAPSHOT_HASH, APPROVED_V2_MIGRATION_RECORDS,
-  assertApprovedV2MigrationScope, assertV2MigrationApproved, executeV2Migration,
+  assertApprovedV2MigrationScope, assertApprovedV2ResumePlan,
+  assertV2MigrationApproved, executeV2Migration,
   MigrationExecutionError,
-  reconcileV2CreationFailure,
+  reconcileUncertainV2Write, reconcileV2CreationFailure,
+  sanitizeMigrationFailure,
   verifyExactV2Document, verifyV2Descriptor, verifyV2Inventory,
   verifyV2LiveState, verifyV2MetadataFilters,
   verifyV2VectorSearch } from "../lib/vector-v2-live-migration.mjs";
@@ -30,6 +32,21 @@ const expected = Array.from({ length: 10 }, (_, index) => ({
   $vector: vector,
 }));
 const records = expected.map((doc) => ({ id: doc._id, sourceHash: doc.content_hash }));
+
+function approvedResumePlan(matchingCount = 3) {
+  return {
+    legacyCollection: LOCAL_COLLECTION, destinationCollection: V2_COLLECTION,
+    legacyCount: 10, legacySnapshotHash: APPROVED_LEGACY_SNAPSHOT_HASH,
+    provider: "local", model: LOCAL_MODEL_ID, revision: LOCAL_MODEL_REVISION,
+    dimensions: LOCAL_DIMENSIONS, destinationState: "compatible",
+    records: APPROVED_V2_MIGRATION_RECORDS.map((record, index) => ({ ...record,
+      destinationStatus: index < matchingCount ? "already-matching" : "copy-after-approval",
+    })),
+    counts: { copyAfterApproval: 10 - matchingCount, alreadyMatching: matchingCount,
+      conflicts: 0 },
+    hasBlockingRecordConflicts: false,
+  };
+}
 
 test("paused apply gate rejects before database access while dry-run stays the default", async () => {
   assert.deepEqual(parseMigrationArgs([]), { mode: "dry-run" });
@@ -114,6 +131,177 @@ test("approval scope pins exactly ten reviewed IDs, hashes, and the legacy snaps
   ]) {
     assert.throws(() => assertApprovedV2MigrationScope({ ...plan, ...changed }));
   }
+});
+
+test("approved resume scope accepts three matching records and only seven missing IDs", async () => {
+  const approved = APPROVED_V2_MIGRATION_RECORDS.map((record, index) => ({
+    ...record, destinationStatus: index < 3 ? "already-matching" : "copy-after-approval",
+  }));
+  const plan = {
+    legacyCollection: LOCAL_COLLECTION, destinationCollection: V2_COLLECTION,
+    legacyCount: 10, legacySnapshotHash: APPROVED_LEGACY_SNAPSHOT_HASH,
+    provider: "local", model: LOCAL_MODEL_ID, revision: LOCAL_MODEL_REVISION,
+    dimensions: LOCAL_DIMENSIONS, destinationState: "compatible",
+    records: approved, counts: { copyAfterApproval: 7, alreadyMatching: 3, conflicts: 0 },
+    hasBlockingRecordConflicts: false,
+  };
+  assert.equal(assertApprovedV2MigrationScope(plan), true);
+  const present = approved.slice(0, 3).map(({ id, sourceHash }) => ({
+    _id: id, content_hash: sourceHash,
+  }));
+  const { collection, calls } = mockCollection(present);
+  assert.deepEqual(await verifyV2Inventory(collection, approved),
+    { count: 3, hashesVerified: 3 });
+  assert.equal(calls.writes, 0);
+  assert.throws(() => assertApprovedV2MigrationScope({ ...plan,
+    records: approved.map((record, index) => index === 3
+      ? { ...record, destinationStatus: "conflict" } : record),
+    counts: { copyAfterApproval: 6, alreadyMatching: 3, conflicts: 1 },
+    hasBlockingRecordConflicts: true,
+  }), /outside the approved ten-record/);
+  await assert.rejects(verifyV2Inventory(mockCollection([
+    ...present, { _id: "movie_ffffffffffffffffffff", content_hash: "f".repeat(64) },
+  ]).collection, approved), /unknown ID/);
+});
+
+test("resume boundary skips the first three, permits only remaining approved IDs, and is idempotent", () => {
+  for (const matchingCount of [3, 4, 7, 10]) {
+    const plan = approvedResumePlan(matchingCount);
+    assert.equal(assertApprovedV2ResumePlan(plan), true);
+    assert.equal(plan.records.filter((record) => record.destinationStatus === "copy-after-approval").length,
+      10 - matchingCount);
+  }
+  for (const matchingCount of [0, 1, 2]) {
+    assert.throws(() => assertApprovedV2ResumePlan(approvedResumePlan(matchingCount)),
+      /resume|approved|matching|scope/iu);
+  }
+  const valid = approvedResumePlan();
+  assert.throws(() => assertApprovedV2ResumePlan({ ...valid,
+    records: valid.records.map((record, index) => index === 3
+      ? { ...record, id: "movie_ffffffffffffffffffff" } : record),
+  }), /resume|approved|scope/iu);
+  assert.throws(() => assertApprovedV2ResumePlan({ ...valid,
+    records: valid.records.map((record, index) => index === 3
+      ? { ...record, destinationStatus: "conflict" } : record),
+    counts: { copyAfterApproval: 6, alreadyMatching: 3, conflicts: 1 },
+    hasBlockingRecordConflicts: true,
+  }), /resume|approved|scope/iu);
+});
+
+test("uncertain insert reconciles a transient findOne error to an exact matching document", async () => {
+  const insertError = Object.assign(new Error("private request details"), { status: 503 });
+  let reads = 0;
+  let inserts = 0;
+  let sleeps = 0;
+  const collection = {
+    async findOne(filter) {
+      reads += 1;
+      assert.equal(filter._id, expected[0]._id);
+      if (reads === 1) throw new Error("temporary readback failure");
+      return { ...expected[0], $vector: new DataAPIVector(vector) };
+    },
+    async countDocuments() { return 1; },
+    async insertOne() { inserts += 1; throw new Error("unexpected retry"); },
+  };
+  assert.equal(await reconcileUncertainV2Write(collection, expected[0], insertError,
+    { sleep: async () => { sleeps += 1; } }), true);
+  assert.equal(reads, 2);
+  assert.equal(inserts, 0);
+  assert.ok(sleeps <= 2);
+});
+
+test("uncertain insert retries a temporary exact-ID count of zero but stops on invalid multiplicity", async () => {
+  const insertError = new Error("uncertain insert");
+  let reads = 0;
+  let counts = 0;
+  let writes = 0;
+  const collection = {
+    async findOne() { reads += 1; return { ...expected[0], $vector: new DataAPIVector(vector) }; },
+    async countDocuments() { counts += 1; return counts === 1 ? 0 : 1; },
+    async insertOne() { writes += 1; },
+  };
+  assert.equal(await reconcileUncertainV2Write(collection, expected[0], insertError,
+    { sleep: async () => {} }), true);
+  assert.deepEqual({ reads, counts, writes }, { reads: 2, counts: 2, writes: 0 });
+
+  reads = 0;
+  counts = 0;
+  const invalidCollection = {
+    ...collection,
+    async countDocuments() { counts += 1; return 2; },
+  };
+  await assert.rejects(reconcileUncertainV2Write(invalidCollection, expected[0], insertError,
+    { sleep: async () => {} }), (error) => {
+    assert.equal(sanitizeMigrationFailure(error).operation, "countDocuments");
+    return true;
+  });
+  assert.deepEqual({ reads, counts, writes }, { reads: 1, counts: 1, writes: 0 });
+});
+
+test("uncertain insert uses bounded read-only probes and retains its original SDK error", async () => {
+  const insertError = Object.assign(new Error("token=private, full plot and vector details"), {
+    name: "DataAPIResponseError", status: 503, errorCode: "SERVER_UNAVAILABLE",
+  });
+  let reads = 0;
+  let writes = 0;
+  const collection = {
+    async findOne() { reads += 1; throw new Error("transient readback failure"); },
+    async countDocuments() { return 0; },
+    async insertOne() { writes += 1; },
+  };
+  await assert.rejects(reconcileUncertainV2Write(collection, expected[0], insertError,
+    { sleep: async () => {} }), (error) => {
+    assert.equal(error.cause, insertError);
+    assert.ok(reads > 0 && reads <= 3);
+    const safe = sanitizeMigrationFailure(error);
+    assert.equal(safe.operation, "insertOne");
+    assert.equal(typeof safe.category, "string");
+    assert.ok(Number.isFinite(safe.elapsedMs) && safe.elapsedMs >= 0);
+    assert.equal(safe.reconciliation.operation, "findOne");
+    assert.ok(Number.isFinite(safe.reconciliation.elapsedMs));
+    assert.doesNotMatch(JSON.stringify(safe), /private|token=|full plot|vector details/iu);
+    assert.ok(!Object.hasOwn(safe, "cause"));
+    return true;
+  });
+  assert.equal(writes, 0);
+});
+
+test("uncertain insert refuses a conflicting destination document without another write", async () => {
+  let reads = 0;
+  let writes = 0;
+  const conflicting = { ...expected[0], content_hash: "f".repeat(64) };
+  const collection = {
+    async findOne() { reads += 1; return { ...conflicting, $vector: new DataAPIVector(vector) }; },
+    async countDocuments() { return 1; },
+    async insertOne() { writes += 1; },
+  };
+  await assert.rejects(reconcileUncertainV2Write(collection, expected[0],
+    new Error("uncertain insert"), { sleep: async () => {} }),
+  /mismatch|conflict|reconcil/iu);
+  assert.ok(reads > 0 && reads <= 3);
+  assert.equal(writes, 0);
+});
+
+test("sanitized diagnostics report only allowlisted SDK status and API code", () => {
+  const httpFailure = Object.create(DataAPIHttpError.prototype);
+  Object.defineProperties(httpFailure, {
+    status: { value: 503 },
+    message: { value: "private token, full plot, and vector payload" },
+  });
+  assert.deepEqual(sanitizeMigrationFailure(httpFailure), {
+    operation: "unknown", category: "http", errorClass: "DataAPIHttpError",
+    httpStatus: 503, apiCode: null, elapsedMs: null,
+  });
+  const apiFailure = Object.create(DataAPIResponseError.prototype);
+  Object.defineProperties(apiFailure, {
+    errorDescriptors: { value: [{ errorCode: "DOCUMENT_ALREADY_EXISTS",
+      message: "private request body" }] },
+    message: { value: "private token" },
+  });
+  assert.deepEqual(sanitizeMigrationFailure(apiFailure), {
+    operation: "unknown", category: "api-response", errorClass: "DataAPIResponseError",
+    httpStatus: null, apiCode: "DOCUMENT_ALREADY_EXISTS", elapsedMs: null,
+  });
 });
 
 test("partial migration result exposes only document IDs and statuses", () => {
@@ -205,6 +393,32 @@ test("exact readback converts DataAPIVector and preserves the complete plot, URL
     ]).collection, expected[0]), /readback mismatch/);
   }
   assert.equal(calls.writes, 0);
+});
+
+test("readback failures identify findOne, comparison, and countDocuments without exposing data", async () => {
+  const exact = { ...expected[0], $vector: new DataAPIVector(vector) };
+  const cases = [
+    { operation: "findOne", collection: {
+      async findOne() { throw new Error("token=private and request body"); },
+    } },
+    { operation: "comparison", collection: {
+      async findOne() { return { ...exact, plot: "wrong" }; },
+      async countDocuments() { return 1; },
+    } },
+    { operation: "countDocuments", collection: {
+      async findOne() { return exact; },
+      async countDocuments() { throw new Error("token=private and response body"); },
+    } },
+  ];
+  for (const { operation, collection } of cases) {
+    await assert.rejects(verifyExactV2Document(collection, expected[0]), (error) => {
+      const safe = sanitizeMigrationFailure(error);
+      assert.equal(safe.operation, operation);
+      assert.ok(Number.isFinite(safe.elapsedMs) && safe.elapsedMs >= 0);
+      assert.doesNotMatch(JSON.stringify(safe), /private|request body|response body|Unabridged/iu);
+      return true;
+    });
+  }
 });
 
 test("metadata filters and vector retrieval are checked independently with read-only queries", async () => {

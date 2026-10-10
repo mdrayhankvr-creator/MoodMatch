@@ -3,9 +3,10 @@ import { getAstraDbRuntime, safeAstraError } from "../lib/astra-runtime.mjs";
 import { createEmbeddingProvider } from "../lib/embedding-provider.mjs";
 import { loadIngestionEnvironment } from "../lib/ingestion-environment.mjs";
 import { readUnifiedMovies } from "../lib/movie-ingestion-sample.mjs";
-import { MigrationPlanError, parseMigrationArgs,
+import { MigrationPlanError, MigrationReadError, parseMigrationArgs,
   planV2Migration } from "../lib/vector-migration-plan.mjs";
-import { assertV2MigrationApproved, MigrationExecutionError,
+import { assertV2MigrationApproved, MigrationExecutionError, MigrationOperationError,
+  sanitizeMigrationFailure,
   executeV2Migration } from "../lib/vector-v2-live-migration.mjs";
 
 async function main() {
@@ -24,20 +25,20 @@ async function main() {
 try { await main(); }
 catch (error) {
   if (error instanceof MigrationExecutionError) {
-    const cause = error.cause;
-    const knownCause = cause instanceof MigrationPlanError ||
-      cause?.name === "CollectionConfigurationError";
     console.error(JSON.stringify({
-      error: knownCause ? cause.message : safeAstraError(cause),
+      error: "Controlled v2 migration stopped; reconcile by dry-run before any future write.",
       phase: error.phase,
+      diagnostic: sanitizeMigrationFailure(error),
       completed: error.results.length,
       results: error.results,
     }, null, 2));
     process.exitCode = 1;
+  } else if (error instanceof MigrationOperationError || error instanceof MigrationReadError) {
+    console.error(JSON.stringify(sanitizeMigrationFailure(error), null, 2));
+    process.exitCode = 1;
   } else {
     const knownConfiguration = error instanceof MigrationPlanError ||
-      error?.name === "CollectionConfigurationError" ||
-      /^(?:Existing v2 collection|Expected 1100 unified movie records|ASTRA_DB_|\.env\.local)/u.test(error?.message ?? "");
+      error?.name === "CollectionConfigurationError";
     console.error(knownConfiguration ? error.message : safeAstraError(error));
     process.exitCode = 1;
   }
