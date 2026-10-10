@@ -199,6 +199,10 @@ Run `npm.cmd run embeddings:benchmark` to measure the pinned local model on nine
 
 Run `npm.cmd run db:schema-v2` for an offline UTF-8 size and selective-indexing assessment of all 1,100 movies. [data/VECTOR_SCHEMA_V2.md](data/VECTOR_SCHEMA_V2.md) defines a proposed `movies_local_384_v2` collection with complete plots stored outside metadata indexing, a guarded descriptor validator, and a future migration and rollback plan. This command performs no inference or database operation. The v2 collection has not been created; full ingestion remains disabled.
 
+### V2 migration preparation (Milestone 6D.3A)
+
+Run `npm.cmd run db:migrate-v2:dry-run` to verify the ten legacy records and their local cache entries, inspect any compatible v2 destination by ID, and print a read-only migration plan. `--apply` is disabled in this milestone. [data/VECTOR_MIGRATION_PLAN.md](data/VECTOR_MIGRATION_PLAN.md) describes the future approval, verification, and rollback steps. The command does not create a collection, migrate a document, or infer an embedding.
+
 ### OpenAI option
 
 Set `EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY` in ignored `.env.local` for server-side OpenAI use. `OPENAI_EMBEDDING_MODEL` defaults to `text-embedding-3-small`; the service also accepts `text-embedding-3-large` with an explicit 1,536-dimension output. The existing OpenAI retry and validation logic remains in place. The separate OpenAI sample commands below explicitly select that provider; running the local command never selects it.
