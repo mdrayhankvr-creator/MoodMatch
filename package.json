@@ -29,7 +29,9 @@
     "db:batch:dry-run": "node scripts/ingest-batch.mjs --dry-run",
     "db:batch:sample": "node scripts/ingest-batch.mjs --apply --limit 10 --infer-missing",
     "db:preflight": "node scripts/preflight-ingestion.mjs",
-    "db:preflight:remote": "node scripts/preflight-ingestion.mjs --remote-read-only"
+    "db:preflight:remote": "node scripts/preflight-ingestion.mjs --remote-read-only",
+    "db:schema-v2": "node scripts/audit-vector-schema-v2.mjs",
+    "db:schema-v2:audit": "node scripts/audit-vector-schema-v2.mjs"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",

@@ -195,6 +195,10 @@ Full ingestion remains disabled. The planner describes small batches (at most te
 
 Run `npm.cmd run embeddings:benchmark` to measure the pinned local model on nine deterministic, uncached movies: three short, three medium, and three long plots. The command validates each 384-dimensional output and prints model startup, per-movie and per-chunk timings, observed throughput, sampled peak RSS, and an explicitly labeled inference-only extrapolation. It accepts no options, makes no Astra or OpenAI requests, and writes no embeddings or checkpoints. The measured results and the read-only Astra capacity assessment are in [data/INGESTION_BENCHMARK.md](data/INGESTION_BENCHMARK.md). Full ingestion remains disabled; the report identifies an indexed-plot size blocker requiring a future approved design decision.
 
+### Versioned local vector schema (Milestone 6D.2)
+
+Run `npm.cmd run db:schema-v2` for an offline UTF-8 size and selective-indexing assessment of all 1,100 movies. [data/VECTOR_SCHEMA_V2.md](data/VECTOR_SCHEMA_V2.md) defines a proposed `movies_local_384_v2` collection with complete plots stored outside metadata indexing, a guarded descriptor validator, and a future migration and rollback plan. This command performs no inference or database operation. The v2 collection has not been created; full ingestion remains disabled.
+
 ### OpenAI option
 
 Set `EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY` in ignored `.env.local` for server-side OpenAI use. `OPENAI_EMBEDDING_MODEL` defaults to `text-embedding-3-small`; the service also accepts `text-embedding-3-large` with an explicit 1,536-dimension output. The existing OpenAI retry and validation logic remains in place. The separate OpenAI sample commands below explicitly select that provider; running the local command never selects it.
