@@ -11,6 +11,7 @@ import { V2_COLLECTION, V2_COLLECTION_DEFINITION,
   makeV2MovieDocument, resolveLocalVectorCollection } from "../lib/vector-schema.mjs";
 import { parseMigrationArgs, planV2Migration } from "../lib/vector-migration-plan.mjs";
 import { APPROVED_LEGACY_SNAPSHOT_HASH, APPROVED_V2_MIGRATION_RECORDS,
+  APPROVED_V2_RESUME_IDS,
   assertApprovedV2MigrationScope, assertApprovedV2ResumePlan,
   assertV2MigrationApproved, executeV2Migration,
   MigrationExecutionError,
@@ -48,7 +49,7 @@ function approvedResumePlan(matchingCount = 3) {
   };
 }
 
-test("paused apply gate rejects before database access while dry-run stays the default", async () => {
+test("closed apply gate rejects before database access while dry-run stays the default", async () => {
   assert.deepEqual(parseMigrationArgs([]), { mode: "dry-run" });
   assert.deepEqual(parseMigrationArgs(["--apply", "--confirm-v2-migration"]), { mode: "apply" });
   assert.throws(assertV2MigrationApproved, /approval gate is closed/);
@@ -165,6 +166,12 @@ test("approved resume scope accepts three matching records and only seven missin
 });
 
 test("resume boundary skips the first three, permits only remaining approved IDs, and is idempotent", () => {
+  assert.deepEqual(APPROVED_V2_RESUME_IDS, [
+    "movie_291791a7023c7142a461", "movie_4059449640323dea46a1",
+    "movie_75815234577520e0e9a0", "movie_85756b984da7bede7e0f",
+    "movie_8f86ea94b9f4f2c7388c", "movie_a27a1114f9e4cd9adb12",
+    "movie_e438309a72dfda243a5b",
+  ]);
   for (const matchingCount of [3, 4, 7, 10]) {
     const plan = approvedResumePlan(matchingCount);
     assert.equal(assertApprovedV2ResumePlan(plan), true);

@@ -1,6 +1,6 @@
 # Versioned local vector storage proposal (Milestone 6D.2)
 
-**Current status:** This document records the M6D.2 design and offline audit. A later controlled operation created `movies_local_384_v2` on October 10, 2026; three of the ten approved legacy records are present after an interrupted migration. The hardcoded write gate is closed. See [VECTOR_MIGRATION_PLAN.md](VECTOR_MIGRATION_PLAN.md) for live evidence and recovery status. `movies_local_384` remains unchanged and full ingestion is disabled.
+**Current status:** This document records the M6D.2 design and offline audit. `movies_local_384_v2` was created on October 10, 2026; the controlled sample migration completed on October 11 with exactly ten verified legacy records in v2. The hardcoded write gate is closed. See [VECTOR_MIGRATION_EXECUTION.md](VECTOR_MIGRATION_EXECUTION.md) for live evidence and [VECTOR_MIGRATION_PLAN.md](VECTOR_MIGRATION_PLAN.md) for recovery history. `movies_local_384` remains unchanged and full ingestion is disabled.
 
 ## Collection definition
 
@@ -38,14 +38,14 @@ Run `npm.cmd run db:schema-v2` to reproduce the offline dataset check. On the Oc
 | Largest projected complete v2 document, including vector allowance | 42,560 UTF-8 bytes |
 | Genuine empty genres preserved | 1 |
 
-This is a local representability check, not proof of server acceptance for all 1,100 records. The eight long plots become stored non-indexed fields; all other allowlisted string values passed the 8,000-byte check. The later controlled run live-verified three small records, exact `_id` readback, metadata filters, and vector similarity. Seven approved records and all 1,090 other movies remain outside v2.
+This is a local representability check, not proof of server acceptance for all 1,100 records. The eight long plots become stored non-indexed fields; all other allowlisted string values passed the 8,000-byte check. The controlled run live-verified all ten sample records, exact `_id` readback, metadata filters, and vector similarity. The other 1,090 movies remain outside v2.
 
 ## Migration status, remaining verification, and rollback
 
-1. The controlled operation created v2 once with the exact definition above. The live descriptor passed validation. Account-specific remaining credits and usable capacity remain unknown; check the Astra Portal before resuming. Never alter or drop the legacy collection.
-2. Three verified legacy documents now exist in v2 under the same IDs. Complete the seven missing IDs only after a renewed approval and fresh checks against dataset content, cached embedding checksums, provenance, the pinned legacy snapshot, and v2 size limits. Reuse validated cached vectors rather than re-embedding. Read back the full plot, source URL, hash, provider, revision, vector, and dimensions after each future write.
+1. The controlled operation created v2 once with the exact definition above. The live descriptor passed validation. Account-specific remaining credits and usable capacity remain unknown; check the Astra Portal before any wider ingestion. Never alter or drop the legacy collection.
+2. All ten verified legacy documents now exist in v2 under the same IDs. The seven-record resume checked dataset content, cached embedding checksums, provenance, the pinned legacy snapshot, and v2 size limits before writing. It reused cached vectors and read back the full plot, source URL, hash, provider, revision, vector, and dimensions after each write.
 3. In a separately approved execution milestone, generate only missing local embeddings with an explicit gate. Preserve the ten-record batch cap until a new run policy is approved. Keep a v2-specific checkpoint with dataset and schema fingerprints; reconcile uncertain writes remotely and never skip solely from checkpoint state. Preserve bounded retries and per-document readback.
-4. Exact `_id` readback, `genre`/`year`/`content_type` filters, and `$vector` similarity (including a metadata-filtered query) passed on the three present records. Full ten-record verification and untested metadata fields remain pending. Audit all 1,100 full documents before any separately approved ingestion or search cutover. Do not mix local 384-dimensional vectors with the separate OpenAI 1,536-dimensional namespace.
+4. Exact `_id` readback for all ten, `genre`/`year`/`content_type` filters, and `$vector` similarity (including a metadata-filtered query) passed. Other metadata filters and 1,090 unwritten movies have not been live-tested. Audit every future full document before any separately approved ingestion or search cutover. Do not mix local 384-dimensional vectors with the separate OpenAI 1,536-dimensional namespace.
 5. Roll back a future search cutover by selecting `movies_local_384` again. Keep v2 and its checkpoint for investigation and reconciliation. Do not delete either collection automatically. Legacy remains a ten-record sample, so rollback does **not** provide full-dataset coverage.
 
 Before broader distribution, review [dataset attribution and imported-text notices](ATTRIBUTION.md), including page-specific licensing conditions. Account-specific credits, collection capacity, and request quotas also require a manual Astra-console check. The schema design alone does not authorize full ingestion.
