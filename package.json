@@ -31,7 +31,8 @@
     "db:preflight": "node scripts/preflight-ingestion.mjs",
     "db:preflight:remote": "node scripts/preflight-ingestion.mjs --remote-read-only",
     "db:schema-v2": "node scripts/audit-vector-schema-v2.mjs",
-    "db:schema-v2:audit": "node scripts/audit-vector-schema-v2.mjs"
+    "db:schema-v2:audit": "node scripts/audit-vector-schema-v2.mjs",
+    "db:migrate-v2:dry-run": "node scripts/migrate-vector-v2.mjs"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",
