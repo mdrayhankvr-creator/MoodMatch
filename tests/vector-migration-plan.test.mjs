@@ -82,12 +82,16 @@ const inspectCache = async (movie) => cacheById.get(movie.id);
 const plan = (db, options = {}) => planV2Migration({ db, movies, provider,
   inspectCache, expectedDatasetCount: movies.length, ...options });
 
-test("dry-run is the only mode; --apply is blocked before any connection", () => {
+test("dry-run is default; apply requires both exact flags and a separate milestone gate", () => {
   assert.deepEqual(parseMigrationArgs([]), { mode: "dry-run" });
   assert.deepEqual(parseMigrationArgs(["--dry-run"]), { mode: "dry-run" });
-  assert.throws(() => parseMigrationArgs(["--apply"]), /disabled in M6D\.3A/);
-  assert.throws(() => parseMigrationArgs(["--dry-run", "--apply"]), /disabled in M6D\.3A/);
-  assert.throws(() => parseMigrationArgs(["--limit", "100"]), /Live operations are disabled/);
+  assert.deepEqual(parseMigrationArgs(["--apply", "--confirm-v2-migration"]), { mode: "apply" });
+  assert.deepEqual(parseMigrationArgs(["--confirm-v2-migration", "--apply"]), { mode: "apply" });
+  for (const args of [["--apply"], ["--confirm-v2-migration"],
+    ["--dry-run", "--apply"], ["--limit", "100"],
+    ["--apply", "--confirm-v2-migration", "--dry-run"]]) {
+    assert.throws(() => parseMigrationArgs(args), /Live execution remains gated/);
+  }
 });
 
 test("ten-record dry-run verifies legacy documents and plans no writes or inference", async () => {
