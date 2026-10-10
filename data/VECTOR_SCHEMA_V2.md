@@ -27,7 +27,7 @@ Movie IDs remain the existing stable `movie_<hex>` values. Future series IDs sho
 
 DataStax's [Data API limits](https://docs.datastax.com/en/astra-db-serverless/api-reference/dataapi-limits.html) state **8,000 UTF-8 bytes per indexed string** and **4 million characters per document**. The local validator measures the serialized document in UTF-8 bytes and rejects it above **4,000,000 bytes**; it also checks the documented character ceiling. The byte ceiling is deliberately stricter than the published character limit, not a claim that Astra publishes a 4 MB document-byte limit. It checks indexed string fields separately. For records without embeddings, the offline audit includes complete source metadata and reserves 33 serialized bytes for each of 384 vector components; this conservative allowance avoids generating embeddings. The actual document must be revalidated with its real vector before any future write.
 
-Run `npm.cmd run db:schema-v2:audit` to reproduce the offline dataset check. On the October 10, 2026 dataset of 1,100 validated movies, it found:
+Run `npm.cmd run db:schema-v2` to reproduce the offline dataset check. On the October 10, 2026 dataset of 1,100 validated movies, it found:
 
 | Measure | Result |
 | --- | ---: |

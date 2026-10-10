@@ -197,7 +197,7 @@ Run `npm.cmd run embeddings:benchmark` to measure the pinned local model on nine
 
 ### Versioned local vector schema (Milestone 6D.2)
 
-Run `npm.cmd run db:schema-v2:audit` for an offline UTF-8 size and selective-indexing assessment of all 1,100 movies. [data/VECTOR_SCHEMA_V2.md](data/VECTOR_SCHEMA_V2.md) defines a proposed `movies_local_384_v2` collection with complete plots stored outside metadata indexing, a guarded descriptor validator, and a future migration and rollback plan. This command performs no inference or database operation. The v2 collection has not been created; full ingestion remains disabled.
+Run `npm.cmd run db:schema-v2` for an offline UTF-8 size and selective-indexing assessment of all 1,100 movies. [data/VECTOR_SCHEMA_V2.md](data/VECTOR_SCHEMA_V2.md) defines a proposed `movies_local_384_v2` collection with complete plots stored outside metadata indexing, a guarded descriptor validator, and a future migration and rollback plan. This command performs no inference or database operation. The v2 collection has not been created; full ingestion remains disabled.
 
 ### OpenAI option
 
