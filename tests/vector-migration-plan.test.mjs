@@ -158,9 +158,9 @@ test("incompatible destination and unexpected legacy inventory fail before write
   await assert.rejects(plan(mockDb({ legacyDocs: unknown }).db), /not in the current dataset/);
 });
 
-test("live verification remains pending and protects the legacy collection", async () => {
+test("dry-run does not claim live verification and protects the legacy collection", async () => {
   const result = await plan(mockDb().db);
-  assert.match(result.liveVerification.status, /pending/);
+  assert.match(result.liveVerification.status, /not evaluated by dry-run/);
   for (const fragment of ["384 dimensions", "_id readback", "genre", "year",
     "content_type", "nearest-neighbor", "legacy count"]) {
     assert.ok(V2_LIVE_VERIFICATION_CHECKS.some((check) => check.includes(fragment)));
