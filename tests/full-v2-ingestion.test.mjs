@@ -9,13 +9,14 @@ import { DEFAULT_CHUNK_CONFIG } from "../lib/chunking.mjs";
 import { makeCacheIdentity } from "../lib/embedding-cache.mjs";
 import { buildMovieEmbeddingInput } from "../lib/embedding-runtime.mjs";
 import { LOCAL_DIMENSIONS, LOCAL_MODEL_ID, LOCAL_MODEL_REVISION } from "../lib/embedding-provider.mjs";
-import { assertFullV2ApplyApproved, executeFullV2Ingestion,
+import { APPROVED_FULL_V2_DATASET_HASH, assertFullV2ApplyApproved, executeFullV2Ingestion,
   fullV2ConfigurationFingerprint, insertMissingV2Document,
   loadFullV2Checkpoint, newFullV2Checkpoint, parseFullV2Args,
   reconcileCheckpointWithRemote, reconcileFullV2Inventory,
-  recordFullV2Outcome, validateFullV2Checkpoint } from "../lib/full-v2-ingestion.mjs";
+  recordFullV2Outcome, validateFullV2Checkpoint,
+  verifyFirstFullV2Batch } from "../lib/full-v2-ingestion.mjs";
 import { validateFullDataset } from "../lib/full-ingestion-readiness.mjs";
-import { writeIngestionCheckpoint } from "../lib/ingestion-checkpoint.mjs";
+import { datasetFingerprint, writeIngestionCheckpoint } from "../lib/ingestion-checkpoint.mjs";
 import { readUnifiedMovies } from "../lib/movie-ingestion-sample.mjs";
 import { EMBEDDING_VERSION } from "../lib/movie-vector-store.mjs";
 import { APPROVED_V2_MIGRATION_RECORDS,
@@ -90,9 +91,21 @@ function mockCollection(documents) {
 
 test("real unified source has exactly 1,100 unique movie IDs and source identities", async () => {
   const dataset = validateFullDataset(await readUnifiedMovies());
+  assert.equal(await datasetFingerprint("data/all-movies.csv"), APPROVED_FULL_V2_DATASET_HASH);
   assert.deepEqual({ records: dataset.records, uniqueIds: dataset.uniqueIds,
     uniqueSources: dataset.uniqueSources },
   { records: 1100, uniqueIds: 1100, uniqueSources: 1100 });
+});
+
+test("first ten-record batch must read back with exactly ten additional destination IDs", async () => {
+  let reads = 0;
+  const collection = { find() { reads += 1; return { async toArray() {
+    return Array.from({ length: 20 }, (_, index) => ({ _id: `movie_${index}` }));
+  } }; } };
+  assert.equal(await verifyFirstFullV2Batch(collection, 10, 10), 20);
+  assert.equal(reads, 1);
+  await assert.rejects(verifyFirstFullV2Batch(collection, 10, 9), /differs/);
+  await assert.rejects(verifyFirstFullV2Batch(collection, 10, 11), /boundary/);
 });
 
 test("full-v2 CLI requires both apply flags and a separate closed gate before DB access", async () => {
@@ -180,6 +193,13 @@ test("a complete 1,100-document inventory has zero pending writes", async () => 
     expectedDocument(movies[index], record.sourceHash));
   const expectedById = new Map(documents.map((document) => [document._id, document]));
   const { collection, calls } = mockCollection(documents);
+  const countExactId = collection.countDocuments;
+  collection.countDocuments = async (filter) => {
+    if (!filter._id) {
+      throw new Error("countDocuments cannot count beyond Astra's 1,000-document cap");
+    }
+    return countExactId(filter);
+  };
   const result = await reconcileFullV2Inventory({ collection, movies, records,
     makeExpectedDocument: async (movie) => expectedById.get(movie.id) });
   assert.deepEqual(result.counts, { matching: 1100, missing: 0, conflicts: 0 });
