@@ -231,6 +231,19 @@ Results contain only `id`, `title`, `year`, `genres`, `contentType`, `sourceUrl`
 
 Run `npm.cmd run search:verify` for fixed read-only mood queries and genre/year filter checks against Astra. This command performs local inference and remote reads only. The curated 1,100-film sample is incomplete, genre labels are inconsistent, and source article text may change. Full plots remain withheld from search responses pending an article-level public redistribution and attribution review; see [data/ATTRIBUTION.md](data/ATTRIBUTION.md).
 
+### Semantic search HTTP API (Milestone 8)
+
+`POST /api/search` is a Node.js App Router endpoint over the M7 service. Send `Content-Type: application/json` with a JSON object containing `query`, optional `topK` (1–20; default 10), and optional `filters` (`content_type: "movie"`, exact stored `genre`, or exact integer `year`). Unknown fields and invalid types fail before model or database access. The endpoint reads only `movies_local_384_v2`; it does not change the application's default collection or expose an ingestion operation. Next.js loads server-side `ASTRA_DB_API_ENDPOINT` and `ASTRA_DB_APPLICATION_TOKEN` from the deployment environment or ignored `.env.local` during local development. The pinned MiniLM model must already be cached locally.
+
+```powershell
+$body = @{ query = "A dramatic family story"; topK = 5; filters = @{ genre = "drama"; year = 2013 } } | ConvertTo-Json
+Invoke-RestMethod -Uri http://localhost:3000/api/search -Method Post -ContentType application/json -Body $body
+```
+
+Success uses `{ "success": true, "data": { "results": [], "count": 0, "query": "..." }, "error": null }`. Results contain only the seven public M7 fields; similarity scores are raw vector similarity values, not confidence percentages. Errors use `{ "success": false, "data": null, "error": { "code": "...", "message": "..." } }` with status 400 for invalid input, 408 for a body that takes over five seconds to arrive, 413 for bodies above 8 KiB, 415 for unsupported media types, 503 for a busy or unavailable search dependency, 504 for the 20-second search response deadline, and 500 for unexpected or persistent server configuration failures. All responses send `Cache-Control: private, no-store, max-age=0`; successful responses include sanitized inference and retrieval durations in `Server-Timing`.
+
+The endpoint caps concurrent searches at four **per Node.js process** and keeps a timed-out search in that capacity count until its underlying work settles. The response deadline does not cancel an in-flight model or Astra request. This per-process bound is not a distributed rate limit. Before public deployment, configure authentication or rate limiting at the ingress and monitor CPU, memory, Astra request usage, and cold starts. The incomplete curated catalogue, exact source-genre strings, and unresolved article-level plot redistribution rights remain limitations. Search responses do not contain full plots.
+
 ### OpenAI option
 
 Set `EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY` in ignored `.env.local` for server-side OpenAI use. `OPENAI_EMBEDDING_MODEL` defaults to `text-embedding-3-small`; the service also accepts `text-embedding-3-large` with an explicit 1,536-dimension output. The existing OpenAI retry and validation logic remains in place. The separate OpenAI sample commands below explicitly select that provider; running the local command never selects it.
