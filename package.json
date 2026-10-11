@@ -35,7 +35,8 @@
     "db:migrate-v2:dry-run": "node scripts/migrate-vector-v2.mjs",
     "db:ingest-full-v2": "node scripts/ingest-full-v2.mjs",
     "db:prepare-full-v2": "node scripts/prepare-full-v2-embeddings.mjs",
-    "db:verify-full-v2": "node scripts/verify-full-v2.mjs"
+    "db:verify-full-v2": "node scripts/verify-full-v2.mjs",
+    "search:verify": "node scripts/verify-movie-search.mjs"
   },
   "dependencies": {
     "@datastax/astra-db-ts": "^2.3.0",

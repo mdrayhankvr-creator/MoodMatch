@@ -211,6 +211,26 @@ Run `npm.cmd run db:prepare-full-v2` to verify the 1,090 prepared movie embeddin
 
 The October 11 local run generated all 1,090 missing embeddings from 3,113 chunks; its final audit found 1,090 reusable caches. `npm.cmd run db:verify-full-v2` independently checks complete stored documents and vectors, metadata filters, vector similarity, the ten-record legacy snapshot, and the default search selector. It does not create or modify collections.
 
+### Read-only semantic movie search (Milestone 7)
+
+`searchMovies({ query, topK = 10, filters = {} })` from `lib/movie-search.mjs` is a Node.js server-side function for the populated `movies_local_384_v2` collection. It does not create collections, write documents, call OpenAI, or change the application's default search selector. It lazily reuses the local `Xenova/all-MiniLM-L6-v2` provider at revision `751bff37182d3f1213fa05d7196b954e230abad9`, with remote model downloads disabled. The pinned model must already be available locally. Set `ASTRA_DB_API_ENDPOINT` and `ASTRA_DB_APPLICATION_TOKEN` in the server environment (or ignored `.env.local` for the verification command); do not expose them to browser code. Run on a Node.js server, not an Edge runtime or client component. No API route is included in this milestone.
+
+```js
+import { searchMovies } from "./lib/movie-search.mjs";
+
+const { results, timings } = await searchMovies({
+  query: "A dramatic family story",
+  topK: 5,
+  filters: { genre: "drama", year: 2013 },
+});
+```
+
+The query is normalized, limited to 500 visible Unicode characters, and must fit the pinned model's 256-token input limit without truncation. `topK` must be an integer from 1 to 20. Filters support only `content_type: "movie"`, an exact, case-sensitive **whole stored** `genre` string, and an exact integer `year` (1800–2100). For example, `genre: "drama"` does not include a stored value of `"drama, mystery"`; the database stores genre as a source string rather than a genre array. The service always adds indexed movie and local-provider filters. Unsupported filters and year ranges are rejected. Astra applies filters before the server-side vector limit; the service never post-filters a short result set.
+
+Results contain only `id`, `title`, `year`, `genres`, `contentType`, `sourceUrl`, and the raw `similarityScore`; an empty source genre becomes `[]`. No plot, vector, hash, provenance, or SDK document is returned. [Astra vector search](https://docs.datastax.com/en/astra-db-serverless/databases/vector-search.html) ranks higher similarity scores first; these values are not calibrated recommendation probabilities. Equal scores are ordered by ID among the returned nearest neighbors; ties at the server's `topK` boundary can still depend on Astra's approximate search. Timings report local query inference, Astra retrieval, and total elapsed milliseconds without logging user query text.
+
+Run `npm.cmd run search:verify` for fixed read-only mood queries and genre/year filter checks against Astra. This command performs local inference and remote reads only. The curated 1,100-film sample is incomplete, genre labels are inconsistent, and source article text may change. Full plots remain withheld from search responses pending an article-level public redistribution and attribution review; see [data/ATTRIBUTION.md](data/ATTRIBUTION.md).
+
 ### OpenAI option
 
 Set `EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY` in ignored `.env.local` for server-side OpenAI use. `OPENAI_EMBEDDING_MODEL` defaults to `text-embedding-3-small`; the service also accepts `text-embedding-3-large` with an explicit 1,536-dimension output. The existing OpenAI retry and validation logic remains in place. The separate OpenAI sample commands below explicitly select that provider; running the local command never selects it.
