@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CatalogueExplorer } from "@/components/catalogue-explorer";
 import { PosterArt } from "@/components/poster-art";
+import { AccountNav } from "@/components/account-nav";
 import { SearchExperience } from "@/components/search-experience";
 import { browseCatalogue } from "@/lib/catalogue.mjs";
 import { getCatalogueSnapshot } from "@/lib/catalogue-server.mjs";
@@ -14,7 +15,7 @@ export default async function Home() {
     <header className="site-header page-width">
       <Link href="/" className="brand" aria-label="MoodMatch home"><span className="brand__mark" aria-hidden="true">✳</span><span>Mood<span className="brand__accent">Match</span></span></Link>
       <nav aria-label="Primary navigation"><a href="#browse">Browse movies</a><a href="#discover">AI mood search</a><a href="#how-it-works">The idea</a></nav>
-      <span className="catalogue-tag">1,100 FILMS <span aria-hidden="true">✦</span></span>
+      <span className="catalogue-tag">1,100 FILMS <span aria-hidden="true">✦</span></span><AccountNav />
     </header>
     <main>
       <section className="hero page-width" aria-labelledby="hero-title">
