@@ -398,3 +398,60 @@ a { color: inherit; }
   .movie-card__bottom a:last-child { display: block; margin-top: 8px; }
   .detail-copy h1 { font-size: clamp(2.7rem, 12vw, 4.2rem); }
 }
+
+/* Private account controls and pages. These styles never imply public ratings. */
+.account-link, .account-unavailable, .account-menu > summary { flex: none; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.account-link { border: 1px solid #8e72be; border-radius: 8px; padding: 10px 12px; color: #f2e8ff; background: #251e34; text-decoration: none; }
+.account-link:hover { background: #3d3159; }
+.account-unavailable { color: #a9a0ba; }
+.account-menu { position: relative; flex: none; }
+.account-menu > summary { display: flex; align-items: center; gap: 8px; max-width: 180px; overflow: hidden; border: 1px solid #706080; border-radius: 8px; padding: 8px 11px; color: #f2e8ff; cursor: pointer; list-style: none; }
+.account-menu > summary::-webkit-details-marker { display: none; }
+.account-menu > summary span { overflow: hidden; text-overflow: ellipsis; }
+.account-menu > summary img { flex: none; width: 25px; height: 25px; border-radius: 50%; object-fit: cover; }
+.account-menu__panel { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; display: grid; min-width: 170px; padding: 8px; border: 1px solid #655673; border-radius: 10px; background: #211b2e; box-shadow: 0 20px 40px rgba(0,0,0,.4); }
+.account-menu__panel a, .account-menu__panel button { width: 100%; border: 0; border-radius: 6px; padding: 11px; background: transparent; color: #eee6f7; text-align: left; text-decoration: none; font-size: 12px; }
+.account-menu__panel a:hover, .account-menu__panel button:hover { background: #3c3150; }
+.movie-card__personal { display: inline-block; margin: 0 6px 9px 0; padding: 5px 8px; border-radius: 5px; color: #dcc7ff; background: #332743; font-size: 10px; }
+.personal-controls { margin-top: 32px; border: 1px solid #5d4b73; border-radius: 12px; padding: 20px; background: #1a1725; }
+.personal-controls h2 { margin: 0 0 16px; font-size: 19px; }
+.personal-controls__buttons { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 18px; }
+.personal-controls button, .personal-controls select, .profile-form button, .profile-form input { min-height: 44px; border: 1px solid #786492; border-radius: 7px; padding: 9px 12px; background: #261f33; color: #f3eaff; }
+.personal-controls button[aria-pressed="true"] { border-color: #c4a5fa; background: #c4a5fa; color: #150e24; }
+.personal-controls button:disabled, .profile-form button:disabled { opacity: .6; cursor: not-allowed; }
+.personal-controls > label { display: block; margin-bottom: 7px; color: #cbb8e7; font-size: 12px; }
+.personal-note { color: #ada4be; font-size: 12px; line-height: 1.6; }
+.personal-note button { border: 0; background: none; color: #d4b3ff; text-decoration: underline; }
+.personal-error { border: 1px solid #a66582; border-radius: 8px; padding: 12px; color: #ffd5e2; background: #35202f; }
+.personal-page { min-height: calc(100vh - 82px); padding-top: 75px; padding-bottom: 120px; }
+.personal-page > h1, .personal-page__content h1 { max-width: 720px; margin: 14px 0 16px; font-size: clamp(2.7rem, 6vw, 5.4rem); line-height: 1.05; letter-spacing: -.07em; }
+.personal-page > p, .personal-page__content > p { max-width: 600px; margin-bottom: 28px; color: #b8aec7; line-height: 1.7; }
+.personal-page__content { max-width: 1050px; margin-inline: auto; }
+.profile-intro { display: flex; align-items: center; gap: 22px; }
+.profile-intro p { color: #b8aec7; }
+.profile-avatar { flex: none; display: grid; place-items: center; width: 72px; height: 72px; overflow: hidden; border-radius: 50%; background: #7862a0; color: white; font-size: 30px; font-weight: 800; }
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 40px 0 56px; }
+.profile-stats > div { display: grid; gap: 6px; border: 1px solid #4d415e; border-radius: 12px; padding: 20px; background: #181724; }
+.profile-stats strong { font-size: 29px; }
+.profile-stats span { color: #a99bbd; font-size: 12px; }
+.profile-section { margin: 45px 0; }
+.profile-section h2 { margin-bottom: 20px; font-size: 24px; }
+.profile-form { display: grid; gap: 12px; max-width: 620px; }
+.profile-form > label, .profile-form legend { color: #d6c9e5; font-size: 13px; }
+.profile-form fieldset { border: 1px solid #51435f; border-radius: 9px; margin: 8px 0; padding: 15px; }
+.profile-genres { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.profile-genres label { display: flex; align-items: center; gap: 8px; text-transform: capitalize; }
+.profile-genres input { min-height: 0; accent-color: #c4a5fa; }
+.profile-form > button { justify-self: start; min-width: 135px; background: #c4a5fa; color: #130d1d; font-weight: 750; }
+.personal-list { display: grid; gap: 8px; padding: 0; list-style: none; }
+.personal-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; border-bottom: 1px solid #40364c; padding: 13px 0; }
+.personal-list li a { font-weight: 700; text-decoration: none; }
+.personal-list li span { color: #ad9fbe; font-size: 12px; }
+.personal-empty { border: 1px dashed #675576; border-radius: 10px; padding: 24px; color: #bdb0cb; }
+.personal-empty a { color: #d0b5fc; }
+.watchlist-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin-top: 35px; }
+.watchlist-grid > div > button { width: 100%; min-height: 44px; margin-top: 8px; border: 1px solid #8e72be; border-radius: 7px; color: #e6d8f9; background: #251e34; }
+@media (max-width: 1100px) { .catalogue-tag { display: none; } .watchlist-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .site-header nav { margin-right: 0; } .account-link, .account-unavailable, .account-menu { order: 2; margin-left: auto; } .watchlist-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } }
+@media (max-width: 390px) { .brand { font-size: 18px; } .account-link, .account-unavailable, .account-menu > summary { font-size: 10px; } .account-link { padding: 8px; } .profile-stats { gap: 7px; } .profile-stats > div { padding: 12px; } .profile-stats strong { font-size: 22px; } }

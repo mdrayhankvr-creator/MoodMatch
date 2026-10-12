@@ -1,11 +1,12 @@
 # MoodMatch
 
-MoodMatch is a movie discovery application with a validated 1,100-film catalogue, local MiniLM semantic search, a read-only Astra DB search service, and a Next.js interface. TV series, accounts, ratings, and watchlists are future work.
+MoodMatch is a movie discovery application with a validated 1,100-film catalogue, local MiniLM semantic search, a read-only Astra DB search service, and a Next.js interface. Personal accounts, watched history, watchlists, and ratings are implemented behind Supabase setup. TV-series ingestion and personalized recommendations remain future work.
 
 ## Tech stack
 
 - Next.js 16 (App Router), React 19, TypeScript, and Tailwind CSS 4
 - Astra DB TypeScript SDK for read-only semantic search and controlled ingestion tooling
+- Supabase Auth SSR and PostgreSQL for private Google accounts and movie activity (requires separate setup)
 - `@huggingface/transformers` for local CPU embeddings, with the OpenAI SDK available as an optional provider
 - `csv-parser` for local CSV preparation and validation, `cheerio` for parsing MediaWiki API section HTML, and `dotenv` for scripts
 - npm for package management
@@ -29,6 +30,9 @@ If `.env.local` does not already exist, copy `.env.example` to `.env.local`, the
 | `LOCAL_EMBEDDING_MODEL` | Local model; currently `Xenova/all-MiniLM-L6-v2` |
 | `OPENAI_API_KEY` | OpenAI API key; required only for OpenAI requests |
 | `OPENAI_EMBEDDING_MODEL` | OpenAI model; defaults to `text-embedding-3-small` |
+| `NEXT_PUBLIC_SUPABASE_URL` | Public Supabase project URL for accounts |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public project key; never a service-role key |
+| `APP_ORIGIN` | Exact site origin for OAuth and same-origin mutation checks |
 
 ## Local development
 
@@ -250,13 +254,19 @@ Run `npm.cmd run dev` with the server-side Astra settings in ignored `.env.local
 
 The interface shows validation, loading, no-result, timeout, and server-error states with a retry action. The first model load and Astra retrieval can take several seconds; observed API searches have varied from about 8 to 20 seconds. A client request waits up to 28 seconds, then stops waiting. Superseding a search or leaving the page also aborts the browser request. **Client abort does not cancel work already running against Astra**; the API's four per-process slots remain occupied until that work completes. Repeated clicks on an identical in-flight query do not issue duplicate requests. There is no automatic search on typing.
 
-The UI does not add user authentication or distributed rate limiting. **Ingress authentication or distributed rate limiting is required before public launch**, along with quota and latency monitoring. Search remains read-only against `movies_local_384_v2`. The 1,100-movie catalogue is incomplete, genre labels are exact and inconsistent, and article-level public redistribution rights for source plots remain unresolved. Source links open with `noopener noreferrer` after URL validation.
+Personal account routes now use authentication, but public semantic search still has no distributed rate limit. **Ingress authentication or distributed rate limiting for search is required before public launch**, along with quota and latency monitoring. Search remains read-only against `movies_local_384_v2`. The 1,100-movie catalogue is incomplete, genre labels are exact and inconsistent, and article-level public redistribution rights for source plots remain unresolved. Source links open with `noopener noreferrer` after URL validation.
 
 ### Premium movie discovery
 
 The homepage now starts with a real catalogue film and a poster-style browse grid. Genre chips select exact stored genre labels. `GET /api/movies` serves deterministic, stable-ID cursor pages from the validated, committed `data/all-movies.csv` source snapshot, with a maximum of 24 movies per request. `GET /api/movies/{id}` and `/movie/{id}` provide exact-ID details. Public responses contain only title, year, genre, content type, source URL, stable ID, and reviewed artwork metadata. Browse and detail paths do not contact Astra or return plots, vectors, hashes, or model provenance. The catalogue snapshot is not a live membership check if source data or the Astra collection later changes.
 
-Movie cards link to details and the original source article. The AI mood-search form remains below the catalogue and still submits only to `POST /api/search`; it retains bounded input, exact genre/year filters, loading and retry states, and stale-response cancellation. There are no functional account, rating, watchlist, or TV-series controls.
+Movie cards link to details and the original source article. The AI mood-search form remains below the catalogue and still submits only to `POST /api/search`; it retains bounded input, exact genre/year filters, loading and retry states, and stale-response cancellation. TV-series ingestion is not implemented.
+
+### Personal movie accounts
+
+Google sign-in uses Supabase SSR cookie sessions and Next.js 16 Proxy refresh. Signed-in users can edit a private profile, mark catalogue movies watched or unwatched, add or remove watchlist entries, and give watched films a personal 1–10 rating. Ratings appear on their cards, detail pages, and profile. `/profile` and `/watchlist` require a verified session; personal API mutations require the same verified identity, same-origin request, bounded JSON, and an exact existing movie ID. Public catalogue and search responses remain free of personal data.
+
+The SQL in [supabase/migrations/20261012_personal_movie_profile.sql](supabase/migrations/20261012_personal_movie_profile.sql) defines private profiles and a unique owner/movie status table with watched dates, watchlist dates, ratings, indexes, and owner-only RLS policies. **It has not been applied.** The interface reports personal features as unavailable until Supabase and Google OAuth are configured. Follow the [setup and security review](data/PERSONAL_ACCOUNTS.md), obtain explicit approval before applying the migration, and run a two-account live authorization check before deployment. No Supabase schema changes or account writes were performed in this PR.
 
 Real poster coverage is currently **0 of 1,100**. The UI uses original CSS graphic placeholders and does not download or hotlink third-party posters. See [data/PREMIUM_UI_ARTWORK.md](data/PREMIUM_UI_ARTWORK.md) for candidate provider licensing decisions, attribution requirements, and remaining rights work.
 
