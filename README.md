@@ -1,11 +1,11 @@
 # MoodMatch
 
-MoodMatch is a planned semantic, vibe-based movie search application. The repository contains the Next.js starter page, a server-only Astra DB connection utility, historical and recent movie pipelines, and a unified CSV dataset. Search and database ingestion are not implemented yet.
+MoodMatch is a movie discovery application with a validated 1,100-film catalogue, local MiniLM semantic search, a read-only Astra DB search service, and a Next.js interface. TV series, accounts, ratings, and watchlists are future work.
 
 ## Tech stack
 
 - Next.js 16 (App Router), React 19, TypeScript, and Tailwind CSS 4
-- Astra DB TypeScript SDK for future vector storage
+- Astra DB TypeScript SDK for read-only semantic search and controlled ingestion tooling
 - `@huggingface/transformers` for local CPU embeddings, with the OpenAI SDK available as an optional provider
 - `csv-parser` for local CSV preparation and validation, `cheerio` for parsing MediaWiki API section HTML, and `dotenv` for scripts
 - npm for package management
@@ -18,7 +18,7 @@ Use Node.js 22 and npm. From the project root, install the locked dependencies:
 npm ci
 ```
 
-If `.env.local` does not already exist, copy `.env.example` to `.env.local`, then add your own credentials to the local file. `.env.local` is ignored by Git. The starter page does not use these settings yet.
+If `.env.local` does not already exist, copy `.env.example` to `.env.local`, then add your own credentials to the local file. `.env.local` is ignored by Git. The browse and detail views use the validated local catalogue source; semantic search needs Astra credentials and the cached local model.
 
 | Variable | Purpose |
 | --- | --- |
@@ -251,6 +251,14 @@ Run `npm.cmd run dev` with the server-side Astra settings in ignored `.env.local
 The interface shows validation, loading, no-result, timeout, and server-error states with a retry action. The first model load and Astra retrieval can take several seconds; observed API searches have varied from about 8 to 20 seconds. A client request waits up to 28 seconds, then stops waiting. Superseding a search or leaving the page also aborts the browser request. **Client abort does not cancel work already running against Astra**; the API's four per-process slots remain occupied until that work completes. Repeated clicks on an identical in-flight query do not issue duplicate requests. There is no automatic search on typing.
 
 The UI does not add user authentication or distributed rate limiting. **Ingress authentication or distributed rate limiting is required before public launch**, along with quota and latency monitoring. Search remains read-only against `movies_local_384_v2`. The 1,100-movie catalogue is incomplete, genre labels are exact and inconsistent, and article-level public redistribution rights for source plots remain unresolved. Source links open with `noopener noreferrer` after URL validation.
+
+### Premium movie discovery
+
+The homepage now starts with a real catalogue film and a poster-style browse grid. Genre chips select exact stored genre labels. `GET /api/movies` serves deterministic, stable-ID cursor pages from the validated, committed `data/all-movies.csv` source snapshot, with a maximum of 24 movies per request. `GET /api/movies/{id}` and `/movie/{id}` provide exact-ID details. Public responses contain only title, year, genre, content type, source URL, stable ID, and reviewed artwork metadata. Browse and detail paths do not contact Astra or return plots, vectors, hashes, or model provenance. The catalogue snapshot is not a live membership check if source data or the Astra collection later changes.
+
+Movie cards link to details and the original source article. The AI mood-search form remains below the catalogue and still submits only to `POST /api/search`; it retains bounded input, exact genre/year filters, loading and retry states, and stale-response cancellation. There are no functional account, rating, watchlist, or TV-series controls.
+
+Real poster coverage is currently **0 of 1,100**. The UI uses original CSS graphic placeholders and does not download or hotlink third-party posters. See [data/PREMIUM_UI_ARTWORK.md](data/PREMIUM_UI_ARTWORK.md) for candidate provider licensing decisions, attribution requirements, and remaining rights work.
 
 ### OpenAI option
 
